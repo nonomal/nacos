@@ -22,7 +22,6 @@ import com.alibaba.nacos.plugin.auth.api.Resource;
 import com.alibaba.nacos.plugin.auth.constant.Constants;
 import com.alibaba.nacos.plugin.auth.exception.AccessException;
 import com.alibaba.nacos.plugin.auth.impl.oidc.authenticate.OidcAuthenticationManager;
-import com.alibaba.nacos.plugin.auth.impl.oidc.config.OidcAuthConfig;
 import com.alibaba.nacos.plugin.auth.impl.oidc.identity.OidcUserMapper.OidcUser;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,50 +33,40 @@ import org.springframework.http.HttpStatus;
  * @author WangzJi
  */
 public class OidcIdentityProvider implements IdentityProvider {
-
+    
     private static final Logger LOGGER = LoggerFactory.getLogger(OidcIdentityProvider.class);
-
-    private volatile OidcAuthenticationManager authManager;
-    private volatile OidcAuthConfig config;
-
+    
+    private final OidcAuthenticationManager authManager;
+    
+    public OidcIdentityProvider(OidcAuthenticationManager authManager) {
+        this.authManager = authManager;
+    }
+    
     @Override
     public AuthResult validateIdentity(IdentityContext identityContext, Resource resource) {
         try {
-            initializeIfNeeded();
-
             // Authenticate user from token
             OidcUser user = authManager.authenticate(identityContext);
-
+            
             // Store user in context for later use
             authManager.setUserInContext(identityContext, user);
-
+            
             // Also set identity ID for logging/auditing
             identityContext.setParameter(
-                    Constants.Identity.IDENTITY_ID,
-                    user.getUsername()
-            );
-
+                Constants.Identity.IDENTITY_ID,
+                user.getUsername());
+            
             LOGGER.debug("OIDC identity validated: {}", user.getUsername());
             return AuthResult.successResult(user);
-
+            
         } catch (AccessException e) {
             LOGGER.warn("OIDC identity validation failed: {}", e.getMessage());
             return AuthResult.failureResult(HttpStatus.UNAUTHORIZED.value(), e.getErrMsg());
         } catch (Exception e) {
             LOGGER.error("OIDC identity validation error", e);
-            return AuthResult.failureResult(HttpStatus.UNAUTHORIZED.value(), "Authentication failed");
+            return AuthResult.failureResult(HttpStatus.UNAUTHORIZED.value(),
+                "Authentication failed");
         }
     }
-
-    private void initializeIfNeeded() {
-        if (config == null) {
-            synchronized (this) {
-                if (config == null) {
-                    config = OidcAuthConfig.getInstance();
-                    authManager = OidcAuthenticationManager.getInstance();
-                    LOGGER.info("OidcIdentityProvider initialized");
-                }
-            }
-        }
-    }
+    
 }

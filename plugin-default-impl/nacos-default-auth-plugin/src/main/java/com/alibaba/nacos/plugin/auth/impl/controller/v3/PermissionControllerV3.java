@@ -17,6 +17,8 @@
 
 package com.alibaba.nacos.plugin.auth.impl.controller.v3;
 
+import com.alibaba.nacos.api.annotation.Since;
+import com.alibaba.nacos.api.common.ApiType;
 import com.alibaba.nacos.api.model.Page;
 import com.alibaba.nacos.api.model.v2.Result;
 import com.alibaba.nacos.auth.annotation.Secured;
@@ -64,10 +66,12 @@ public class PermissionControllerV3 {
      * @param action   the related action
      * @return ok if succeed
      */
+    @Since("3.0.0")
     @PostMapping
-    @Secured(resource = AuthConstants.CONSOLE_RESOURCE_NAME_PREFIX + "permissions", action = ActionTypes.WRITE)
+    @Secured(resource = AuthConstants.CONSOLE_RESOURCE_NAME_PREFIX + "permissions",
+        action = ActionTypes.WRITE, apiType = ApiType.ADMIN_API)
     public Result<String> createPermission(@RequestParam String role, @RequestParam String resource,
-            @RequestParam String action) {
+        @RequestParam String action) {
         nacosRoleService.addPermission(role, resource, action);
         return Result.success("add permission ok!");
     }
@@ -80,10 +84,12 @@ public class PermissionControllerV3 {
      * @param action   the related action
      * @return ok if succeed
      */
+    @Since("3.0.0")
     @DeleteMapping
-    @Secured(resource = AuthConstants.CONSOLE_RESOURCE_NAME_PREFIX + "permissions", action = ActionTypes.WRITE)
+    @Secured(resource = AuthConstants.CONSOLE_RESOURCE_NAME_PREFIX + "permissions",
+        action = ActionTypes.WRITE, apiType = ApiType.ADMIN_API)
     public Result<String> deletePermission(@RequestParam String role, @RequestParam String resource,
-            @RequestParam String action) {
+        @RequestParam String action) {
         nacosRoleService.deletePermission(role, resource, action);
         return Result.success("delete permission ok!");
     }
@@ -97,11 +103,14 @@ public class PermissionControllerV3 {
      * @param search   the type of search (accurate or blur)
      * @return permission of a role
      */
+    @Since("3.0.0")
     @GetMapping("/list")
-    @Secured(resource = AuthConstants.CONSOLE_RESOURCE_NAME_PREFIX + "permissions", action = ActionTypes.READ)
-    public Result<Page<PermissionInfo>> getPermissionList(@RequestParam int pageNo, @RequestParam int pageSize,
-            @RequestParam(name = "role", defaultValue = StringUtils.EMPTY) String role,
-            @RequestParam(name = "search", defaultValue = "accurate") String search) {
+    @Secured(resource = AuthConstants.CONSOLE_RESOURCE_NAME_PREFIX + "permissions",
+        action = ActionTypes.READ, apiType = ApiType.ADMIN_API)
+    public Result<Page<PermissionInfo>> getPermissionList(@RequestParam int pageNo,
+        @RequestParam int pageSize,
+        @RequestParam(name = "role", defaultValue = StringUtils.EMPTY) String role,
+        @RequestParam(name = "search", defaultValue = "accurate") String search) {
         Page<PermissionInfo> permissionPage;
         if (SEARCH_TYPE_BLUR.equalsIgnoreCase(search)) {
             permissionPage = nacosRoleService.findPermissions(role, pageNo, pageSize);
@@ -119,10 +128,13 @@ public class PermissionControllerV3 {
      * @param action   the related action
      * @return true if duplicate, false otherwise
      */
+    @Since("3.0.0")
     @GetMapping
-    @Secured(resource = AuthConstants.CONSOLE_RESOURCE_NAME_PREFIX + "permissions", action = ActionTypes.READ)
-    public Result<Boolean> isDuplicatePermission(@RequestParam String role, @RequestParam String resource,
-            @RequestParam String action) {
+    @Secured(resource = AuthConstants.CONSOLE_RESOURCE_NAME_PREFIX + "permissions",
+        action = ActionTypes.READ, apiType = ApiType.ADMIN_API)
+    public Result<Boolean> isDuplicatePermission(@RequestParam String role,
+        @RequestParam String resource,
+        @RequestParam String action) {
         return nacosRoleService.isDuplicatePermission(role, resource, action);
     }
 }

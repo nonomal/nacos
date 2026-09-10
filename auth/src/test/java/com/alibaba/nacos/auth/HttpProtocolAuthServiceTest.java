@@ -17,11 +17,13 @@
 package com.alibaba.nacos.auth;
 
 import com.alibaba.nacos.api.common.Constants;
+import com.alibaba.nacos.api.exception.runtime.NacosRuntimeException;
 import com.alibaba.nacos.api.naming.CommonParams;
 import com.alibaba.nacos.auth.annotation.Secured;
 import com.alibaba.nacos.auth.config.NacosAuthConfig;
 import com.alibaba.nacos.auth.mock.MockAuthPluginService;
 import com.alibaba.nacos.auth.mock.MockResourceParser;
+import com.alibaba.nacos.auth.mock.MockSuccessResourceParser;
 import com.alibaba.nacos.auth.serveridentity.ServerIdentityResult;
 import com.alibaba.nacos.plugin.auth.api.IdentityContext;
 import com.alibaba.nacos.plugin.auth.api.Permission;
@@ -43,6 +45,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
@@ -73,7 +76,7 @@ class HttpProtocolAuthServiceTest {
     }
     
     @Test
-    @Secured(resource = "testResource", tags = {"testTag"})
+    @Secured(resource = "testResource", parser = MockResourceParser.class, tags = {"testTag"})
     void testParseResourceWithSpecifiedResource() throws NoSuchMethodException {
         Secured secured = getMethodSecure("testParseResourceWithSpecifiedResource");
         Resource actual = protocolAuthService.parseResource(request, secured);
@@ -98,8 +101,19 @@ class HttpProtocolAuthServiceTest {
     @Secured(signType = "non-exist", parser = MockResourceParser.class)
     void testParseResourceWithNonExistTypeException() throws NoSuchMethodException {
         Secured secured = getMethodSecure("testParseResourceWithNonExistTypeException");
+        assertThrows(NacosRuntimeException.class,
+            () -> protocolAuthService.parseResource(request, secured));
+    }
+    
+    @Test
+    @Secured(signType = SignType.CONFIG, parser = MockSuccessResourceParser.class)
+    void testExplicitParserOverridesTypedParser() throws NoSuchMethodException {
+        Secured secured = getMethodSecure("testExplicitParserOverridesTypedParser");
         Resource actual = protocolAuthService.parseResource(request, secured);
-        assertEquals(Resource.EMPTY_RESOURCE, actual);
+        assertEquals("testCustomResource", actual.getName());
+        assertEquals("testCustomNs", actual.getNamespaceId());
+        assertEquals("testCustomGroup", actual.getGroup());
+        assertEquals(SignType.CONFIG, actual.getType());
     }
     
     @Test
@@ -148,27 +162,29 @@ class HttpProtocolAuthServiceTest {
     @Test
     void testValidateIdentityWithoutPlugin() throws AccessException {
         IdentityContext identityContext = new IdentityContext();
-        assertTrue(protocolAuthService.validateIdentity(identityContext, Resource.EMPTY_RESOURCE).isSuccess());
+        assertTrue(protocolAuthService.validateIdentity(identityContext, Resource.EMPTY_RESOURCE)
+            .isSuccess());
     }
     
     @Test
     void testValidateIdentityWithPlugin() throws AccessException {
         when(authConfig.getNacosAuthSystemType()).thenReturn(MockAuthPluginService.TEST_PLUGIN);
         IdentityContext identityContext = new IdentityContext();
-        assertFalse(protocolAuthService.validateIdentity(identityContext, Resource.EMPTY_RESOURCE).isSuccess());
+        assertFalse(protocolAuthService.validateIdentity(identityContext, Resource.EMPTY_RESOURCE)
+            .isSuccess());
     }
     
     @Test
     void testValidateAuthorityWithoutPlugin() throws AccessException {
         assertTrue(protocolAuthService.validateAuthority(new IdentityContext(),
-                new Permission(Resource.EMPTY_RESOURCE, "")).isSuccess());
+            new Permission(Resource.EMPTY_RESOURCE, "")).isSuccess());
     }
     
     @Test
     void testValidateAuthorityWithPlugin() throws AccessException {
         when(authConfig.getNacosAuthSystemType()).thenReturn(MockAuthPluginService.TEST_PLUGIN);
         assertFalse(protocolAuthService.validateAuthority(new IdentityContext(),
-                new Permission(Resource.EMPTY_RESOURCE, "")).isSuccess());
+            new Permission(Resource.EMPTY_RESOURCE, "")).isSuccess());
     }
     
     @Test
@@ -192,15 +208,17 @@ class HttpProtocolAuthServiceTest {
         Secured secured = getMethodSecure("testCheckServerIdentityWithoutIdentityConfig");
         ServerIdentityResult result = protocolAuthService.checkServerIdentity(request, secured);
         assertEquals(ServerIdentityResult.ResultStatus.FAIL, result.getStatus());
-        assertEquals("Invalid server identity key or value, Please make sure set `nacos.core.auth.server.identity.key`"
-                        + " and `nacos.core.auth.server.identity.value`, or open `nacos.core.auth.enable.userAgentAuthWhite`",
-                result.getMessage());
+        assertEquals(
+            "Invalid server identity key or value, Please make sure set `nacos.core.auth.server.identity.key`"
+                + " and `nacos.core.auth.server.identity.value`, or open `nacos.core.auth.enable.userAgentAuthWhite`",
+            result.getMessage());
         when(authConfig.getServerIdentityKey()).thenReturn("1");
         result = protocolAuthService.checkServerIdentity(request, secured);
         assertEquals(ServerIdentityResult.ResultStatus.FAIL, result.getStatus());
-        assertEquals("Invalid server identity key or value, Please make sure set `nacos.core.auth.server.identity.key`"
-                        + " and `nacos.core.auth.server.identity.value`, or open `nacos.core.auth.enable.userAgentAuthWhite`",
-                result.getMessage());
+        assertEquals(
+            "Invalid server identity key or value, Please make sure set `nacos.core.auth.server.identity.key`"
+                + " and `nacos.core.auth.server.identity.value`, or open `nacos.core.auth.enable.userAgentAuthWhite`",
+            result.getMessage());
     }
     
     @Test

@@ -39,12 +39,23 @@ public class DefaultConnectionControlManager extends ConnectionControlManager {
         super();
     }
     
+    /**
+     * Construct a no-limit manager with optional runtime resource initialization.
+     *
+     * @param initialize whether to initialize runtime resources
+     */
+    protected DefaultConnectionControlManager(boolean initialize) {
+        super(initialize);
+    }
+    
     @Override
     public void applyConnectionLimitRule(ConnectionControlRule connectionControlRule) {
         super.connectionControlRule = connectionControlRule;
         Loggers.CONTROL.info("Connection control rule updated to -> {}",
-                (this.connectionControlRule == null ? null : JacksonUtils.toJson(this.connectionControlRule)));
-        Loggers.CONTROL.warn("Connection control updated, But connection control manager is no limit implementation.");
+            (this.connectionControlRule == null ? null
+                : JacksonUtils.toJson(this.connectionControlRule)));
+        Loggers.CONTROL.warn(
+            "Connection control updated, But connection control manager is no limit implementation.");
     }
     
     @Override

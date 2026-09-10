@@ -42,7 +42,7 @@ class ClientTrackServiceTest {
         ClientTrackService.clientRecords.clear();
         envUtilMockedStatic = Mockito.mockStatic(EnvUtil.class);
         envUtilMockedStatic.when(() -> EnvUtil.getProperty("nacos.config.cache.type", "nacos"))
-                .thenReturn("nacos");
+            .thenReturn("nacos");
     }
     
     @AfterEach
@@ -69,8 +69,27 @@ class ClientTrackServiceTest {
         assertEquals(1, ClientTrackService.subscriberCount());
         
         //服务端数据更新
-        ConfigCacheService.updateMd5(groupKey, md5 + "111", content, System.currentTimeMillis(), "");
+        ConfigCacheService.updateMd5(groupKey, md5 + "111", content, System.currentTimeMillis(),
+            "");
         assertFalse(ClientTrackService.isClientUptodate(clientIp).get(groupKey));
     }
     
+    @Test
+    void testSubscriberCountMultiple() {
+        String ip1 = "3.3.3.3";
+        String ip2 = "4.4.4.4";
+        ClientTrackService.trackClientMd5(ip1, "key1", "m1");
+        ClientTrackService.trackClientMd5(ip1, "key2", "m2");
+        ClientTrackService.trackClientMd5(ip2, "key3", "m3");
+        assertEquals(2, ClientTrackService.subscribeClientCount());
+        assertEquals(3, ClientTrackService.subscriberCount());
+    }
+    
+    @Test
+    void testRefreshClientRecord() {
+        ClientTrackService.trackClientMd5("5.5.5.5", "key1", "m1");
+        assertEquals(1, ClientTrackService.subscribeClientCount());
+        ClientTrackService.refreshClientRecord();
+        assertEquals(0, ClientTrackService.subscribeClientCount());
+    }
 }

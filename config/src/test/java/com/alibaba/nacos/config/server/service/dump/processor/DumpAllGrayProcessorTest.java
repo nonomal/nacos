@@ -23,6 +23,7 @@ import com.alibaba.nacos.config.server.model.CacheItem;
 import com.alibaba.nacos.config.server.model.ConfigInfoGrayWrapper;
 import com.alibaba.nacos.config.server.service.ConfigCacheService;
 import com.alibaba.nacos.config.server.service.dump.ExternalDumpService;
+import com.alibaba.nacos.config.server.service.dump.disk.ConfigDiskPathException;
 import com.alibaba.nacos.config.server.service.dump.disk.ConfigDiskServiceFactory;
 import com.alibaba.nacos.config.server.service.dump.task.DumpAllGrayTask;
 import com.alibaba.nacos.config.server.service.repository.ConfigInfoGrayPersistService;
@@ -48,6 +49,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
@@ -99,17 +101,18 @@ class DumpAllGrayProcessorTest {
         dumpAllGrayProcessor = new DumpAllGrayProcessor(configInfoGrayPersistService);
         when(EnvUtil.getNacosHome()).thenReturn(System.getProperty("user.home"));
         when(EnvUtil.getProperty(eq(CommonConstant.NACOS_PLUGIN_DATASOURCE_LOG), eq(Boolean.class),
-                eq(false))).thenReturn(false);
-        dynamicDataSourceMockedStatic.when(DynamicDataSource::getInstance).thenReturn(dynamicDataSource);
+            eq(false))).thenReturn(false);
+        dynamicDataSourceMockedStatic.when(DynamicDataSource::getInstance)
+            .thenReturn(dynamicDataSource);
         
         when(dynamicDataSource.getDataSource()).thenReturn(dataSourceService);
         
-        dumpService = new ExternalDumpService(configInfoPersistService, null, null, configInfoGrayPersistService, null,
-                null);
+        dumpService = new ExternalDumpService(configInfoPersistService, null, null,
+            configInfoGrayPersistService, null);
         
         dumpAllProcessor = new DumpAllProcessor(configInfoPersistService);
         envUtilMockedStatic.when(() -> EnvUtil.getProperty(eq("memory_limit_file_path"),
-                eq("/sys/fs/cgroup/memory/memory.limit_in_bytes"))).thenReturn(mockMem);
+            eq("/sys/fs/cgroup/memory/memory.limit_in_bytes"))).thenReturn(mockMem);
         
     }
     
@@ -134,17 +137,22 @@ class DumpAllGrayProcessorTest {
     void testProcessWithValidTaskType() throws Exception {
         final DumpAllGrayTask validTask = mock(DumpAllGrayTask.class);
         List<ConfigInfoGrayWrapper> configList = new ArrayList<>();
-        configList.add(createGrayWrapper("dataId-1", "group-1"));
+        ConfigInfoGrayWrapper wrapper = createGrayWrapper("dataId-1", "group-1");
+        wrapper.setTenant("");
+        configList.add(wrapper);
         
         Page<ConfigInfoGrayWrapper> page = new Page<>();
+        page.setPageItems(configList);
         when(configInfoGrayPersistService.configInfoGrayCount()).thenReturn(1);
-        when(configInfoGrayPersistService.findAllConfigInfoGrayForDumpAll(anyInt(), anyInt())).thenReturn(page);
+        when(configInfoGrayPersistService.findAllConfigInfoGrayForDumpAll(anyInt(), anyInt()))
+            .thenReturn(page);
         
         boolean result = dumpAllGrayProcessor.process(validTask);
         
         assertTrue(result);
         verify(configInfoGrayPersistService, times(1)).configInfoGrayCount();
-        verify(configInfoGrayPersistService, times(1)).findAllConfigInfoGrayForDumpAll(anyInt(), anyInt());
+        verify(configInfoGrayPersistService, times(1)).findAllConfigInfoGrayForDumpAll(anyInt(),
+            anyInt());
     }
     
     @Test
@@ -156,13 +164,15 @@ class DumpAllGrayProcessorTest {
         when(configInfoGrayPersistService.configInfoGrayCount()).thenReturn(totalConfigs);
         
         Page<ConfigInfoGrayWrapper> pageOne = new Page<>();
-        when(configInfoGrayPersistService.findAllConfigInfoGrayForDumpAll(eq(1), anyInt())).thenReturn(pageOne);
+        when(configInfoGrayPersistService.findAllConfigInfoGrayForDumpAll(eq(1), anyInt()))
+            .thenReturn(pageOne);
         
         DumpAllGrayTask task = mock(DumpAllGrayTask.class);
         boolean result = dumpAllGrayProcessor.process(task);
         
         assertTrue(result);
-        verify(configInfoGrayPersistService, atLeastOnce()).findAllConfigInfoGrayForDumpAll(anyInt(), anyInt());
+        verify(configInfoGrayPersistService, atLeastOnce())
+            .findAllConfigInfoGrayForDumpAll(anyInt(), anyInt());
     }
     
     @Test
@@ -170,9 +180,56 @@ class DumpAllGrayProcessorTest {
         DumpAllGrayTask task = mock(DumpAllGrayTask.class);
         Page<ConfigInfoGrayWrapper> page = new Page<>();
         when(configInfoGrayPersistService.configInfoGrayCount()).thenReturn(1);
-        when(configInfoGrayPersistService.findAllConfigInfoGrayForDumpAll(anyInt(), anyInt())).thenReturn(page);
+        when(configInfoGrayPersistService.findAllConfigInfoGrayForDumpAll(anyInt(), anyInt()))
+            .thenReturn(page);
         boolean result = dumpAllGrayProcessor.process(task);
         assertTrue(result);
+    }
+    
+    @Test
+    void testRejectedRecordDoesNotBlockOtherRecordsAndStillFailsTask() {
+        DumpAllGrayTask task = mock(DumpAllGrayTask.class);
+        ConfigInfoGrayWrapper rejected = createGrayWrapper("badData", "..");
+        ConfigInfoGrayWrapper rejectedAgain = createGrayWrapper("badDataAgain", "..");
+        ConfigInfoGrayWrapper valid = createGrayWrapper("goodData", "group");
+        Page<ConfigInfoGrayWrapper> page = new Page<>();
+        page.setPageItems(List.of(rejected, rejectedAgain, valid));
+        when(configInfoGrayPersistService.configInfoGrayCount()).thenReturn(3);
+        when(configInfoGrayPersistService.findAllConfigInfoGrayForDumpAll(anyInt(), anyInt()))
+            .thenReturn(page);
+        
+        try (MockedStatic<ConfigCacheService> cacheServiceMock =
+            Mockito.mockStatic(ConfigCacheService.class)) {
+            cacheServiceMock.when(() -> ConfigCacheService.dumpGray(rejected.getDataId(),
+                rejected.getGroup(), rejected.getTenant(), rejected.getGrayName(),
+                rejected.getGrayRule(), rejected.getContent(), rejected.getLastModified(),
+                rejected.getEncryptedDataKey()))
+                .thenThrow(new ConfigDiskPathException("group", ".."));
+            cacheServiceMock.when(() -> ConfigCacheService.dumpGray(rejectedAgain.getDataId(),
+                rejectedAgain.getGroup(), rejectedAgain.getTenant(), rejectedAgain.getGrayName(),
+                rejectedAgain.getGrayRule(), rejectedAgain.getContent(),
+                rejectedAgain.getLastModified(), rejectedAgain.getEncryptedDataKey()))
+                .thenThrow(new ConfigDiskPathException("group", ".."));
+            cacheServiceMock.when(() -> ConfigCacheService.dumpGray(valid.getDataId(),
+                valid.getGroup(), valid.getTenant(), valid.getGrayName(), valid.getGrayRule(),
+                valid.getContent(), valid.getLastModified(), valid.getEncryptedDataKey()))
+                .thenReturn(true);
+            
+            assertThrows(ConfigDiskPathException.class,
+                () -> dumpAllGrayProcessor.process(task));
+            
+            cacheServiceMock.verify(() -> ConfigCacheService.dumpGray(rejected.getDataId(),
+                rejected.getGroup(), rejected.getTenant(), rejected.getGrayName(),
+                rejected.getGrayRule(), rejected.getContent(), rejected.getLastModified(),
+                rejected.getEncryptedDataKey()));
+            cacheServiceMock.verify(() -> ConfigCacheService.dumpGray(rejectedAgain.getDataId(),
+                rejectedAgain.getGroup(), rejectedAgain.getTenant(), rejectedAgain.getGrayName(),
+                rejectedAgain.getGrayRule(), rejectedAgain.getContent(),
+                rejectedAgain.getLastModified(), rejectedAgain.getEncryptedDataKey()));
+            cacheServiceMock.verify(() -> ConfigCacheService.dumpGray(valid.getDataId(),
+                valid.getGroup(), valid.getTenant(), valid.getGrayName(), valid.getGrayRule(),
+                valid.getContent(), valid.getLastModified(), valid.getEncryptedDataKey()));
+        }
     }
     
     /**
@@ -190,11 +247,14 @@ class DumpAllGrayProcessorTest {
         page.setTotalCount(2);
         page.setPagesAvailable(2);
         page.setPageNumber(1);
-        List<ConfigInfoGrayWrapper> list = Arrays.asList(configInfoGrayWrapper1, configInfoGrayWrapper2);
+        List<ConfigInfoGrayWrapper> list =
+            Arrays.asList(configInfoGrayWrapper1, configInfoGrayWrapper2);
         page.setPageItems(list);
         
         Mockito.when(configInfoGrayPersistService.configInfoGrayCount()).thenReturn(2);
-        Mockito.when(configInfoGrayPersistService.findAllConfigInfoGrayForDumpAll(anyInt(), anyInt())).thenReturn(page);
+        Mockito
+            .when(configInfoGrayPersistService.findAllConfigInfoGrayForDumpAll(anyInt(), anyInt()))
+            .thenReturn(page);
         
         final String md51 = MD5Utils.md5Hex(configInfoGrayWrapper1.getContent(), "UTF-8");
         final String md52 = MD5Utils.md5Hex(configInfoGrayWrapper2.getContent(), "UTF-8");
@@ -216,10 +276,12 @@ class DumpAllGrayProcessorTest {
         String tenant2 = configInfoGrayWrapper2.getTenant();
         String content2 = configInfoGrayWrapper2.getContent();
         
-        ConfigCacheService.dumpGray(dataId1, group1, tenant1, grayName1, grayRule1, content1, latterTimestamp,
-                encryptedDataKey);
-        ConfigCacheService.dumpGray(dataId2, group2, tenant2, grayName2, grayRule2, content2, earlierTimestamp,
-                encryptedDataKey);
+        ConfigCacheService.dumpGray(dataId1, group1, tenant1, grayName1, grayRule1, content1,
+            latterTimestamp,
+            encryptedDataKey);
+        ConfigCacheService.dumpGray(dataId2, group2, tenant2, grayName2, grayRule2, content2,
+            earlierTimestamp,
+            encryptedDataKey);
         
         DumpAllGrayTask dumpAllTask = new DumpAllGrayTask();
         boolean process = dumpAllGrayProcessor.process(dumpAllTask);
@@ -227,26 +289,27 @@ class DumpAllGrayProcessorTest {
         assertTrue(process);
         
         CacheItem contentCache1 = ConfigCacheService.getContentCache(
-                GroupKey2.getKey(configInfoGrayWrapper1.getDataId(), configInfoGrayWrapper1.getGroup(),
-                        configInfoGrayWrapper1.getTenant()));
+            GroupKey2.getKey(configInfoGrayWrapper1.getDataId(), configInfoGrayWrapper1.getGroup(),
+                configInfoGrayWrapper1.getTenant()));
         assertEquals(md51, contentCache1.getConfigCacheGray().get(grayName1).getMd5());
-        assertEquals(latterTimestamp, contentCache1.getConfigCacheGray().get(grayName1).getLastModifiedTs());
+        assertEquals(latterTimestamp,
+            contentCache1.getConfigCacheGray().get(grayName1).getLastModifiedTs());
         
         String contentFromDisk1 = ConfigDiskServiceFactory.getInstance()
-                .getGrayContent(configInfoGrayWrapper1.getDataId(), configInfoGrayWrapper1.getGroup(),
-                        configInfoGrayWrapper1.getTenant(), configInfoGrayWrapper1.getGrayName());
+            .getGrayContent(configInfoGrayWrapper1.getDataId(), configInfoGrayWrapper1.getGroup(),
+                configInfoGrayWrapper1.getTenant(), configInfoGrayWrapper1.getGrayName());
         assertEquals(configInfoGrayWrapper1.getContent(), contentFromDisk1);
         
         CacheItem contentCache2 = ConfigCacheService.getContentCache(
-                GroupKey2.getKey(configInfoGrayWrapper2.getDataId(), configInfoGrayWrapper2.getGroup(),
-                        configInfoGrayWrapper2.getTenant()));
+            GroupKey2.getKey(configInfoGrayWrapper2.getDataId(), configInfoGrayWrapper2.getGroup(),
+                configInfoGrayWrapper2.getTenant()));
         assertEquals(md52, contentCache2.getConfigCacheGray().get(grayName2).getMd5());
         assertEquals(configInfoGrayWrapper2.getLastModified(),
-                contentCache2.getConfigCacheGray().get(grayName2).getLastModifiedTs());
+            contentCache2.getConfigCacheGray().get(grayName2).getLastModifiedTs());
         
         String contentFromDisk2 = ConfigDiskServiceFactory.getInstance()
-                .getGrayContent(configInfoGrayWrapper2.getDataId(), configInfoGrayWrapper2.getGroup(),
-                        configInfoGrayWrapper2.getTenant(), configInfoGrayWrapper2.getGrayName());
+            .getGrayContent(configInfoGrayWrapper2.getDataId(), configInfoGrayWrapper2.getGroup(),
+                configInfoGrayWrapper2.getTenant(), configInfoGrayWrapper2.getGrayName());
         assertEquals(configInfoGrayWrapper2.getContent(), contentFromDisk2);
     }
     
@@ -256,7 +319,8 @@ class DumpAllGrayProcessorTest {
         wrapper.setGroup(group);
         wrapper.setTenant("tenant");
         wrapper.setGrayName("gray-" + dataId);
-        String grayRule = "{\"type\":\"beta\",\"version\":\"1.0.0\",\"expr\":\"0 0/5 * * * ?\",\"priority\":1}";
+        String grayRule =
+            "{\"type\":\"beta\",\"version\":\"1.0.0\",\"expr\":\"0 0/5 * * * ?\",\"priority\":1}";
         wrapper.setGrayRule(grayRule);
         wrapper.setContent("content");
         wrapper.setLastModified(System.currentTimeMillis());

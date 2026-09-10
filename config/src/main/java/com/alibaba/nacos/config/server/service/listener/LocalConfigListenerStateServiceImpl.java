@@ -46,16 +46,18 @@ public class LocalConfigListenerStateServiceImpl implements ConfigListenerStateS
     private final ConnectionManager connectionManager;
     
     public LocalConfigListenerStateServiceImpl(LongPollingService longPollingService,
-            ConfigChangeListenContext configChangeListenContext, ConnectionManager connectionManager) {
+        ConfigChangeListenContext configChangeListenContext, ConnectionManager connectionManager) {
         this.longPollingService = longPollingService;
         this.configChangeListenContext = configChangeListenContext;
         this.connectionManager = connectionManager;
     }
     
     @Override
-    public ConfigListenerInfo getListenerState(String dataId, String groupName, String namespaceId) {
+    public ConfigListenerInfo getListenerState(String dataId, String groupName,
+        String namespaceId) {
         // long polling listeners for 1.x client TODO removed after 3.x not support 1.x client.
-        SampleResult result = longPollingService.getCollectSubscribleInfo(dataId, groupName, namespaceId);
+        SampleResult result =
+            longPollingService.getCollectSubscribleInfo(dataId, groupName, namespaceId);
         // rpc listeners for upper 2.x client.
         String groupKey = GroupKey2.getKey(dataId, groupName, namespaceId);
         Set<String> listenersClients = configChangeListenContext.getListeners(groupKey);
@@ -77,14 +79,14 @@ public class LocalConfigListenerStateServiceImpl implements ConfigListenerStateS
     }
     
     @Override
-    public ConfigListenerInfo getListenerStateByIp(String ip) {
+    public ConfigListenerInfo getListenerStateByIp(String ip, String namespaceId) {
         // long polling listeners for 1.x client TODO removed after 3.x not support 1.x client.
         SampleResult result = longPollingService.getCollectSubscribleInfoByIp(ip);
         // rpc listeners for upper 2.x client.
         List<Connection> connectionsByIp = connectionManager.getConnectionByIp(ip);
         for (Connection connectionByIp : connectionsByIp) {
             Map<String, String> listenKeys = configChangeListenContext.getListenKeys(
-                    connectionByIp.getMetaInfo().getConnectionId());
+                connectionByIp.getMetaInfo().getConnectionId());
             if (listenKeys != null) {
                 result.getLisentersGroupkeyStatus().putAll(listenKeys);
             }

@@ -23,7 +23,6 @@ import com.alibaba.nacos.plugin.auth.api.Permission;
 import com.alibaba.nacos.plugin.auth.api.Resource;
 import com.alibaba.nacos.plugin.auth.constant.Constants;
 import com.alibaba.nacos.plugin.auth.constant.SignType;
-import com.alibaba.nacos.plugin.auth.impl.configuration.AuthConfigs;
 import com.alibaba.nacos.plugin.auth.impl.constant.AuthConstants;
 import com.alibaba.nacos.plugin.auth.impl.persistence.PermissionInfo;
 import com.alibaba.nacos.plugin.auth.impl.persistence.RoleInfo;
@@ -40,13 +39,10 @@ import static com.alibaba.nacos.api.common.Constants.DEFAULT_NAMESPACE_ID;
  *
  * @author xiweng.yy
  */
-public abstract class AbstractCheckedRoleService extends AbstractCachedRoleService implements NacosRoleService {
+public abstract class AbstractCheckedRoleService extends AbstractCachedRoleService
+    implements NacosRoleService {
     
-    private final AuthConfigs authConfigs;
-    
-    protected AbstractCheckedRoleService(AuthConfigs authConfigs) {
-        this.authConfigs = authConfigs;
-    }
+    private volatile boolean hasGlobalAdminRole;
     
     @Override
     public boolean hasPermission(NacosUser nacosUser, Permission permission) {
@@ -68,7 +64,8 @@ public abstract class AbstractCheckedRoleService extends AbstractCachedRoleServi
         }
         
         // Old global admin can pass resource 'console/':
-        if (permission.getResource().getName().startsWith(AuthConstants.CONSOLE_RESOURCE_NAME_PREFIX)) {
+        if (permission.getResource().getName()
+            .startsWith(AuthConstants.CONSOLE_RESOURCE_NAME_PREFIX)) {
             return false;
         }
         
@@ -84,7 +81,8 @@ public abstract class AbstractCheckedRoleService extends AbstractCachedRoleServi
                     permissionResource = DEFAULT_NAMESPACE_ID + permissionResource;
                 }
                 String permissionAction = permissionInfo.getAction();
-                if (permissionAction.contains(permission.getAction()) && Pattern.matches(permissionResource,
+                if (permissionAction.contains(permission.getAction())
+                    && Pattern.matches(permissionResource,
                         joinResource(permission.getResource()))) {
                     return true;
                 }
@@ -102,7 +100,8 @@ public abstract class AbstractCheckedRoleService extends AbstractCachedRoleServi
         for (PermissionInfo permissionInfo : permissionInfos) {
             boolean resourceMatch = StringUtils.equals(resource, permissionInfo.getResource());
             boolean actionMatch =
-                    StringUtils.equals(action, permissionInfo.getAction()) || "rw".equals(permissionInfo.getAction());
+                StringUtils.equals(action, permissionInfo.getAction())
+                    || "rw".equals(permissionInfo.getAction());
             if (resourceMatch && actionMatch) {
                 return Result.success(Boolean.TRUE);
             }
@@ -116,19 +115,43 @@ public abstract class AbstractCheckedRoleService extends AbstractCachedRoleServi
         if (CollectionUtils.isEmpty(roles)) {
             return false;
         }
-        return roles.stream().anyMatch(roleInfo -> AuthConstants.GLOBAL_ADMIN_ROLE.equals(roleInfo.getRole()));
+        return roles.stream()
+            .anyMatch(roleInfo -> AuthConstants.GLOBAL_ADMIN_ROLE.equals(roleInfo.getRole()));
     }
     
     @Override
     public boolean hasGlobalAdminRole() {
-        if (authConfigs.isHasGlobalAdminRole()) {
+        if (hasGlobalAdminRole) {
             return true;
         }
         List<RoleInfo> roles = getAllRoles();
         boolean hasGlobalAdminRole = CollectionUtils.isNotEmpty(roles) && roles.stream()
-                .anyMatch(roleInfo -> AuthConstants.GLOBAL_ADMIN_ROLE.equals(roleInfo.getRole()));
-        authConfigs.setHasGlobalAdminRole(hasGlobalAdminRole);
+            .anyMatch(roleInfo -> AuthConstants.GLOBAL_ADMIN_ROLE.equals(roleInfo.getRole()));
+        this.hasGlobalAdminRole = hasGlobalAdminRole;
         return hasGlobalAdminRole;
+    }
+    
+    /**
+     * Mark the local global-admin lookup cache after an administrator role is created.
+     */
+    protected void markGlobalAdminRolePresent() {
+        hasGlobalAdminRole = true;
+    }
+    
+    /**
+     * Reject deletion or manual creation of system-reserved roles.
+     *
+     * @param role role name to check
+     */
+    protected void rejectReservedRole(String role) {
+        if (AuthConstants.GLOBAL_ADMIN_ROLE.equals(role)) {
+            throw new IllegalArgumentException(
+                "role '" + AuthConstants.GLOBAL_ADMIN_ROLE + "' is not permitted to delete!");
+        }
+        if (AuthConstants.ANONYMOUS_ROLE.equals(role)) {
+            throw new IllegalArgumentException(
+                "role '" + AuthConstants.ANONYMOUS_ROLE + "' is reserved by the system");
+        }
     }
     
     /**
@@ -158,10 +181,12 @@ public abstract class AbstractCheckedRoleService extends AbstractCachedRoleServi
         }
         String resourceName = resource.getName();
         if (StringUtils.isBlank(resourceName)) {
-            result.append(Constants.Resource.SPLITTER).append(resource.getType().toLowerCase()).append("/*");
+            result.append(Constants.Resource.SPLITTER).append(resource.getType().toLowerCase())
+                .append("/*");
         } else {
-            result.append(Constants.Resource.SPLITTER).append(resource.getType().toLowerCase()).append('/')
-                    .append(resourceName);
+            result.append(Constants.Resource.SPLITTER).append(resource.getType().toLowerCase())
+                .append('/')
+                .append(resourceName);
         }
         return result.toString();
     }

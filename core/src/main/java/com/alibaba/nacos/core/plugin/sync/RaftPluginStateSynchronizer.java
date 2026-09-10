@@ -25,14 +25,10 @@ import com.alibaba.nacos.consistency.Serializer;
 import com.alibaba.nacos.consistency.cp.CPProtocol;
 import com.alibaba.nacos.consistency.entity.Response;
 import com.alibaba.nacos.consistency.entity.WriteRequest;
-import com.alibaba.nacos.core.distributed.ProtocolManager;
-import com.alibaba.nacos.core.plugin.condition.ConditionOnClusterMode;
 import com.alibaba.nacos.core.plugin.model.PluginStateOperation;
 import com.google.protobuf.ByteString;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.context.annotation.Conditional;
-import org.springframework.stereotype.Component;
 
 import java.util.Map;
 
@@ -44,65 +40,89 @@ import java.util.Map;
  * @author WangzJi
  * @since 3.2.0
  */
-@Component
-@Conditional(ConditionOnClusterMode.class)
 public class RaftPluginStateSynchronizer implements PluginStateSynchronizer {
-
+    
     private static final Logger LOGGER = LoggerFactory.getLogger(RaftPluginStateSynchronizer.class);
-
+    
     private static final String PLUGIN_STATE_GROUP = "plugin_state";
-
-    private final CPProtocol cpProtocol;
-
+    
+    private final PluginStateConsensusService consensusService;
+    
     private final Serializer serializer;
-
-    public RaftPluginStateSynchronizer(ProtocolManager protocolManager) {
-        this.cpProtocol = protocolManager.getCpProtocol();
+    
+    public RaftPluginStateSynchronizer(PluginStateConsensusService consensusService) {
+        this.consensusService = consensusService;
         this.serializer = SerializeFactory.getDefault();
-        LOGGER.info("[RaftPluginStateSynchronizer] Initialized with Raft protocol");
+        LOGGER.info("[RaftPluginStateSynchronizer] Initialized with isolated consensus lifecycle");
     }
-
+    
+    @Override
+    public void initialize() {
+        consensusService.initialize();
+    }
+    
+    @Override
+    public boolean isAvailable() {
+        return consensusService.isAvailable();
+    }
+    
     @Override
     public void syncStateChange(String pluginId, boolean enabled) throws NacosApiException {
         PluginStateOperation operation = PluginStateOperation.builder()
-                .type(PluginStateOperation.OperationType.CHANGE_STATE)
-                .pluginId(pluginId)
-                .enabled(enabled)
-                .build();
+            .type(PluginStateOperation.OperationType.CHANGE_STATE)
+            .pluginId(pluginId)
+            .enabled(enabled)
+            .build();
         submitToRaft(operation);
     }
-
+    
     @Override
-    public void syncConfigChange(String pluginId, Map<String, String> config) throws NacosApiException {
+    public void syncConfigChange(String pluginId, Map<String, String> config)
+        throws NacosApiException {
         PluginStateOperation operation = PluginStateOperation.builder()
-                .type(PluginStateOperation.OperationType.UPDATE_CONFIG)
-                .pluginId(pluginId)
-                .config(config)
-                .build();
+            .type(PluginStateOperation.OperationType.UPDATE_CONFIG)
+            .pluginId(pluginId)
+            .config(config)
+            .build();
         submitToRaft(operation);
     }
-
+    
     private void submitToRaft(PluginStateOperation operation) throws NacosApiException {
         try {
+            CPProtocol cpProtocol = consensusService.getProtocol();
             byte[] data = serializer.serialize(operation);
-
+            
             WriteRequest request = WriteRequest.newBuilder()
-                    .setGroup(PLUGIN_STATE_GROUP)
-                    .setData(ByteString.copyFrom(data))
-                    .setOperation(DataOperation.CHANGE.name())
-                    .build();
-
+                .setGroup(PLUGIN_STATE_GROUP)
+                .setData(ByteString.copyFrom(data))
+                .setOperation(DataOperation.CHANGE.name())
+                .build();
+            
             Response response = cpProtocol.write(request);
             if (!response.getSuccess()) {
+                if (response.getErrMsg().startsWith(
+                    PluginStateOperation.INVALID_PARAM_ERROR_PREFIX)) {
+                    String message = response.getErrMsg().substring(
+                        PluginStateOperation.INVALID_PARAM_ERROR_PREFIX.length());
+                    throw new NacosApiException(NacosException.INVALID_PARAM,
+                        ErrorCode.PARAMETER_VALIDATE_ERROR, message);
+                }
+                if (response.getErrMsg().startsWith(
+                    PluginStateOperation.CONFIG_APPLY_ERROR_PREFIX)) {
+                    String message = response.getErrMsg().substring(
+                        PluginStateOperation.CONFIG_APPLY_ERROR_PREFIX.length());
+                    throw new NacosApiException(NacosException.SERVER_ERROR,
+                        ErrorCode.SERVER_ERROR, message);
+                }
                 throw new NacosApiException(NacosException.SERVER_ERROR, ErrorCode.SERVER_ERROR,
-                        "Failed to submit plugin state to Raft: " + response.getErrMsg());
+                    "Failed to submit plugin state to Raft: " + response.getErrMsg());
             }
         } catch (Exception e) {
             if (e instanceof NacosApiException) {
                 throw (NacosApiException) e;
             }
             throw new NacosApiException(NacosException.SERVER_ERROR, ErrorCode.SERVER_ERROR, e,
-                    "Failed to submit plugin state to Raft");
+                "Failed to submit plugin state to Raft");
         }
     }
 }

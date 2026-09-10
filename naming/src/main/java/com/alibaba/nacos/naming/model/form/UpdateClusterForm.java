@@ -19,8 +19,12 @@ package com.alibaba.nacos.naming.model.form;
 import com.alibaba.nacos.api.common.Constants;
 import com.alibaba.nacos.api.exception.api.NacosApiException;
 import com.alibaba.nacos.api.model.v2.ErrorCode;
+import com.alibaba.nacos.api.naming.pojo.healthcheck.AbstractHealthChecker;
+import com.alibaba.nacos.api.naming.pojo.healthcheck.HealthCheckerFactory;
+import com.alibaba.nacos.api.naming.pojo.healthcheck.impl.Http;
 import com.alibaba.nacos.common.utils.StringUtils;
 import com.alibaba.nacos.api.model.NacosForm;
+import com.alibaba.nacos.naming.healthcheck.HealthCheckTargetUtil;
 import org.springframework.http.HttpStatus;
 
 /**
@@ -52,25 +56,49 @@ public class UpdateClusterForm implements NacosForm {
     public void validate() throws NacosApiException {
         if (StringUtils.isBlank(serviceName)) {
             throw new NacosApiException(HttpStatus.BAD_REQUEST.value(), ErrorCode.PARAMETER_MISSING,
-                    "Required parameter 'serviceName' type String is not present");
+                "Required parameter 'serviceName' type String is not present");
         }
         if (StringUtils.isBlank(clusterName)) {
             throw new NacosApiException(HttpStatus.BAD_REQUEST.value(), ErrorCode.PARAMETER_MISSING,
-                    "Required parameter 'clusterName' type String is not present");
+                "Required parameter 'clusterName' type String is not present");
         }
         if (null == checkPort) {
             throw new NacosApiException(HttpStatus.BAD_REQUEST.value(), ErrorCode.PARAMETER_MISSING,
-                    "Required parameter 'checkPort' type Integer is not present");
+                "Required parameter 'checkPort' type Integer is not present");
         }
         if (null == useInstancePort4Check) {
             throw new NacosApiException(HttpStatus.BAD_REQUEST.value(), ErrorCode.PARAMETER_MISSING,
-                    "Required parameter 'useInstancePort4Check' type Boolean is not present");
+                "Required parameter 'useInstancePort4Check' type Boolean is not present");
         }
         if (StringUtils.isEmpty(healthChecker)) {
             throw new NacosApiException(HttpStatus.BAD_REQUEST.value(), ErrorCode.PARAMETER_MISSING,
-                    "Required parameter 'healthChecker' type String is not present");
+                "Required parameter 'healthChecker' type String is not present");
         }
+        validateHealthChecker();
         fillDefaultValue();
+    }
+    
+    private void validateHealthChecker() throws NacosApiException {
+        try {
+            AbstractHealthChecker checker = HealthCheckerFactory.deserialize(healthChecker);
+            if (checker == null) {
+                throw new NacosApiException(HttpStatus.BAD_REQUEST.value(),
+                    ErrorCode.PARAMETER_VALIDATE_ERROR,
+                    "Parameter 'healthChecker' must not be null");
+            }
+            if (checker instanceof Http && !HealthCheckTargetUtil
+                .isValidHttpHealthChecker((Http) checker)) {
+                throw new NacosApiException(HttpStatus.BAD_REQUEST.value(),
+                    ErrorCode.PARAMETER_VALIDATE_ERROR,
+                    "Parameter 'healthChecker' contains an invalid HTTP request target or header");
+            }
+        } catch (NacosApiException e) {
+            throw e;
+        } catch (RuntimeException e) {
+            throw new NacosApiException(HttpStatus.BAD_REQUEST.value(),
+                ErrorCode.PARAMETER_VALIDATE_ERROR, e,
+                "Parameter 'healthChecker' is not valid JSON");
+        }
     }
     
     private void fillDefaultValue() {

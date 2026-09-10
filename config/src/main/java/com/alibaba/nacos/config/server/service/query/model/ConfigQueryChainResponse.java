@@ -44,6 +44,8 @@ public class ConfigQueryChainResponse {
     
     private int resultCode;
     
+    private int errorCode;
+    
     private String message;
     
     private ConfigQueryStatus status;
@@ -73,6 +75,11 @@ public class ConfigQueryChainResponse {
          * Indicates a conflict in the configuration query.
          */
         CONFIG_QUERY_CONFLICT,
+        
+        /**
+         * Indicates that the configuration was not modified (304), content read is skipped.
+         */
+        CONFIG_NOT_MODIFIED,
     }
     
     public String getContent() {
@@ -139,6 +146,14 @@ public class ConfigQueryChainResponse {
         this.resultCode = resultCode;
     }
     
+    public int getErrorCode() {
+        return errorCode;
+    }
+    
+    public void setErrorCode(int errorCode) {
+        this.errorCode = errorCode;
+    }
+    
     public String getMessage() {
         return message;
     }
@@ -170,6 +185,7 @@ public class ConfigQueryChainResponse {
     
     public void setErrorInfo(int errorCode, String errorMsg) {
         this.resultCode = ResponseCode.FAIL.getCode();
+        this.errorCode = errorCode;
         this.message = errorMsg;
     }
     
@@ -183,18 +199,20 @@ public class ConfigQueryChainResponse {
         }
         ConfigQueryChainResponse that = (ConfigQueryChainResponse) o;
         return lastModified == that.lastModified
-                && Objects.equals(content, that.content)
-                && Objects.equals(contentType, that.contentType)
-                && Objects.equals(encryptedDataKey, that.encryptedDataKey)
-                && Objects.equals(md5, that.md5)
-                && Objects.equals(matchedGray, that.matchedGray)
-                && Objects.equals(resultCode, that.resultCode)
-                && Objects.equals(message, that.message)
-                && status == that.status;
+            && Objects.equals(content, that.content)
+            && Objects.equals(contentType, that.contentType)
+            && Objects.equals(encryptedDataKey, that.encryptedDataKey)
+            && Objects.equals(md5, that.md5)
+            && Objects.equals(matchedGray, that.matchedGray)
+            && Objects.equals(resultCode, that.resultCode)
+            && Objects.equals(errorCode, that.errorCode)
+            && Objects.equals(message, that.message)
+            && status == that.status;
     }
     
     @Override
     public int hashCode() {
-        return Objects.hash(content, contentType, encryptedDataKey, md5, lastModified, matchedGray, resultCode, message, status);
+        return Objects.hash(content, contentType, encryptedDataKey, md5, lastModified, matchedGray,
+            resultCode, errorCode, message, status);
     }
 }

@@ -16,12 +16,23 @@
 
 package com.alibaba.nacos.console.handler.impl.noop.ai;
 
-import com.alibaba.nacos.ai.form.skills.admin.SkillDetailForm;
+import com.alibaba.nacos.ai.form.AiResourceFilterableForm;
+import com.alibaba.nacos.ai.form.skills.admin.SkillDraftCreateForm;
+import com.alibaba.nacos.ai.form.skills.admin.SkillBizTagsUpdateForm;
+import com.alibaba.nacos.ai.form.skills.admin.SkillLabelsUpdateForm;
+import com.alibaba.nacos.ai.form.skills.admin.SkillOnlineForm;
+import com.alibaba.nacos.ai.form.skills.admin.SkillPublishForm;
+import com.alibaba.nacos.ai.form.skills.admin.SkillScopeForm;
 import com.alibaba.nacos.ai.form.skills.admin.SkillForm;
 import com.alibaba.nacos.ai.form.skills.admin.SkillListForm;
+import com.alibaba.nacos.ai.form.skills.admin.SkillSubmitForm;
 import com.alibaba.nacos.ai.form.skills.admin.SkillUpdateForm;
+import com.alibaba.nacos.ai.service.skills.SkillUploadRequest;
+import com.alibaba.nacos.api.ai.model.skills.BatchUploadResult;
 import com.alibaba.nacos.api.ai.model.skills.Skill;
-import com.alibaba.nacos.api.ai.model.skills.SkillBasicInfo;
+import com.alibaba.nacos.api.ai.model.skills.SkillMeta;
+import com.alibaba.nacos.api.ai.model.skills.SkillSummary;
+import com.alibaba.nacos.api.ai.model.skills.SkillUploadPrecheckResult;
 import com.alibaba.nacos.api.exception.NacosException;
 import com.alibaba.nacos.api.exception.api.NacosApiException;
 import com.alibaba.nacos.api.model.Page;
@@ -30,6 +41,8 @@ import com.alibaba.nacos.console.handler.ai.SkillHandler;
 import com.alibaba.nacos.core.model.form.PageForm;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.stereotype.Service;
+
+import java.util.List;
 
 /**
  * Noop implementation of Skill handler.
@@ -41,42 +54,144 @@ import org.springframework.stereotype.Service;
 @ConditionalOnMissingBean(value = SkillHandler.class, ignored = SkillNoopHandler.class)
 public class SkillNoopHandler implements SkillHandler {
     
-    private static final String SKILL_NOT_ENABLED_MESSAGE = 
-            "Nacos AI Skill module and API required both `naming` and `config` module.";
+    private static final String SKILL_NOT_ENABLED_MESSAGE =
+        "Nacos AI Skill module and API required both `naming` and `config` module.";
     
     @Override
-    public void registerSkill(Skill skill, SkillDetailForm form) throws NacosException {
-        throw new NacosApiException(NacosException.SERVER_NOT_IMPLEMENTED, ErrorCode.API_FUNCTION_DISABLED,
-                SKILL_NOT_ENABLED_MESSAGE);
+    public SkillMeta getSkill(SkillForm form) throws NacosException {
+        throw new NacosApiException(NacosException.SERVER_NOT_IMPLEMENTED,
+            ErrorCode.API_FUNCTION_DISABLED,
+            SKILL_NOT_ENABLED_MESSAGE);
     }
     
     @Override
-    public Skill getSkill(SkillForm form) throws NacosException {
-        throw new NacosApiException(NacosException.SERVER_NOT_IMPLEMENTED, ErrorCode.API_FUNCTION_DISABLED,
-                SKILL_NOT_ENABLED_MESSAGE);
+    public Skill getSkillVersion(SkillForm form) throws NacosException {
+        throw new NacosApiException(NacosException.SERVER_NOT_IMPLEMENTED,
+            ErrorCode.API_FUNCTION_DISABLED,
+            SKILL_NOT_ENABLED_MESSAGE);
+    }
+    
+    @Override
+    public Skill downloadSkillVersion(SkillForm form) throws NacosException {
+        throw new NacosApiException(NacosException.SERVER_NOT_IMPLEMENTED,
+            ErrorCode.API_FUNCTION_DISABLED,
+            SKILL_NOT_ENABLED_MESSAGE);
     }
     
     @Override
     public void deleteSkill(SkillForm form) throws NacosException {
-        throw new NacosApiException(NacosException.SERVER_NOT_IMPLEMENTED, ErrorCode.API_FUNCTION_DISABLED,
-                SKILL_NOT_ENABLED_MESSAGE);
+        throw new NacosApiException(NacosException.SERVER_NOT_IMPLEMENTED,
+            ErrorCode.API_FUNCTION_DISABLED,
+            SKILL_NOT_ENABLED_MESSAGE);
     }
     
     @Override
-    public void updateSkill(Skill skill, SkillUpdateForm form) throws NacosException {
-        throw new NacosApiException(NacosException.SERVER_NOT_IMPLEMENTED, ErrorCode.API_FUNCTION_DISABLED,
-                SKILL_NOT_ENABLED_MESSAGE);
+    public Page<SkillSummary> listSkills(SkillListForm skillListForm,
+        AiResourceFilterableForm filterableForm,
+        PageForm pageForm) throws NacosException {
+        throw new NacosApiException(NacosException.SERVER_NOT_IMPLEMENTED,
+            ErrorCode.API_FUNCTION_DISABLED,
+            SKILL_NOT_ENABLED_MESSAGE);
     }
     
     @Override
-    public Page<SkillBasicInfo> listSkills(SkillListForm skillListForm, PageForm pageForm) throws NacosException {
-        throw new NacosApiException(NacosException.SERVER_NOT_IMPLEMENTED, ErrorCode.API_FUNCTION_DISABLED,
-                SKILL_NOT_ENABLED_MESSAGE);
+    public String uploadSkillFromZip(SkillUploadRequest request) throws NacosException {
+        throw new NacosApiException(NacosException.SERVER_NOT_IMPLEMENTED,
+            ErrorCode.API_FUNCTION_DISABLED,
+            SKILL_NOT_ENABLED_MESSAGE);
     }
     
     @Override
-    public String uploadSkillFromZip(String namespaceId, byte[] zipBytes) throws NacosException {
-        throw new NacosApiException(NacosException.SERVER_NOT_IMPLEMENTED, ErrorCode.API_FUNCTION_DISABLED,
-                SKILL_NOT_ENABLED_MESSAGE);
+    public List<SkillUploadPrecheckResult> precheckUploadSkillFromZip(String namespaceId,
+        byte[] zipBytes) throws NacosException {
+        throw new NacosApiException(NacosException.SERVER_NOT_IMPLEMENTED,
+            ErrorCode.API_FUNCTION_DISABLED,
+            SKILL_NOT_ENABLED_MESSAGE);
+    }
+    
+    @Override
+    public BatchUploadResult batchUploadSkillsFromZip(String namespaceId, byte[] zipBytes,
+        boolean overwrite)
+        throws NacosException {
+        throw new NacosApiException(NacosException.SERVER_NOT_IMPLEMENTED,
+            ErrorCode.API_FUNCTION_DISABLED,
+            SKILL_NOT_ENABLED_MESSAGE);
+    }
+    
+    @Override
+    public String createDraft(SkillDraftCreateForm form) throws NacosException {
+        throw new NacosApiException(NacosException.SERVER_NOT_IMPLEMENTED,
+            ErrorCode.API_FUNCTION_DISABLED,
+            SKILL_NOT_ENABLED_MESSAGE);
+    }
+    
+    @Override
+    public void updateDraft(SkillUpdateForm form) throws NacosException {
+        throw new NacosApiException(NacosException.SERVER_NOT_IMPLEMENTED,
+            ErrorCode.API_FUNCTION_DISABLED,
+            SKILL_NOT_ENABLED_MESSAGE);
+    }
+    
+    @Override
+    public void deleteDraft(SkillForm form) throws NacosException {
+        throw new NacosApiException(NacosException.SERVER_NOT_IMPLEMENTED,
+            ErrorCode.API_FUNCTION_DISABLED,
+            SKILL_NOT_ENABLED_MESSAGE);
+    }
+    
+    @Override
+    public String submit(SkillSubmitForm form) throws NacosException {
+        throw new NacosApiException(NacosException.SERVER_NOT_IMPLEMENTED,
+            ErrorCode.API_FUNCTION_DISABLED,
+            SKILL_NOT_ENABLED_MESSAGE);
+    }
+    
+    @Override
+    public void publish(SkillPublishForm form) throws NacosException {
+        throw new NacosApiException(NacosException.SERVER_NOT_IMPLEMENTED,
+            ErrorCode.API_FUNCTION_DISABLED,
+            SKILL_NOT_ENABLED_MESSAGE);
+    }
+    
+    @Override
+    public void updateLabels(SkillLabelsUpdateForm form) throws NacosException {
+        throw new NacosApiException(NacosException.SERVER_NOT_IMPLEMENTED,
+            ErrorCode.API_FUNCTION_DISABLED,
+            SKILL_NOT_ENABLED_MESSAGE);
+    }
+    
+    @Override
+    public void updateBizTags(SkillBizTagsUpdateForm form) throws NacosException {
+        throw new NacosApiException(NacosException.SERVER_NOT_IMPLEMENTED,
+            ErrorCode.API_FUNCTION_DISABLED,
+            SKILL_NOT_ENABLED_MESSAGE);
+    }
+    
+    @Override
+    public void changeOnlineStatus(SkillOnlineForm form, boolean online) throws NacosException {
+        throw new NacosApiException(NacosException.SERVER_NOT_IMPLEMENTED,
+            ErrorCode.API_FUNCTION_DISABLED,
+            SKILL_NOT_ENABLED_MESSAGE);
+    }
+    
+    @Override
+    public void updateScope(SkillScopeForm form) throws NacosException {
+        throw new NacosApiException(NacosException.SERVER_NOT_IMPLEMENTED,
+            ErrorCode.API_FUNCTION_DISABLED,
+            SKILL_NOT_ENABLED_MESSAGE);
+    }
+    
+    @Override
+    public void forcePublish(SkillPublishForm form) throws NacosException {
+        throw new NacosApiException(NacosException.SERVER_NOT_IMPLEMENTED,
+            ErrorCode.API_FUNCTION_DISABLED,
+            SKILL_NOT_ENABLED_MESSAGE);
+    }
+    
+    @Override
+    public void redraft(SkillPublishForm form) throws NacosException {
+        throw new NacosApiException(NacosException.SERVER_NOT_IMPLEMENTED,
+            ErrorCode.API_FUNCTION_DISABLED,
+            SKILL_NOT_ENABLED_MESSAGE);
     }
 }

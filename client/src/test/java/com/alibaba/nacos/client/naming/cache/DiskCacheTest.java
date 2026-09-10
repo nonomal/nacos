@@ -29,13 +29,16 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 
 class DiskCacheTest {
     
-    private static final String CACHE_DIR = DiskCacheTest.class.getClassLoader().getResource("disk_cache_test").getPath() + "cache/";
+    private static final String CACHE_DIR =
+        new File(DiskCacheTest.class.getClassLoader().getResource("disk_cache_test").getPath(),
+            "cache").getPath() + File.separator;
     
     private ServiceInfo serviceInfo;
     
@@ -50,7 +53,7 @@ class DiskCacheTest {
         instance.setIp("1.1.1.1");
         instance.setPort(1234);
         instance.setServiceName("testName");
-        instance.addMetadata("chinese", "中文");
+        instance.addMetadata("text", "zhongwen");
         serviceInfo.setHosts(Collections.singletonList(instance));
     }
     
@@ -155,5 +158,10 @@ class DiskCacheTest {
     void testGetLineSeparator() {
         String lineSeparator = DiskCache.getLineSeparator();
         assertTrue(lineSeparator.length() > 0);
+    }
+    
+    @Test
+    void testConstructor() {
+        assertNotNull(new DiskCache());
     }
 }

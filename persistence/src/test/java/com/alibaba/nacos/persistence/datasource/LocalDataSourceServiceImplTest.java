@@ -17,12 +17,16 @@
 package com.alibaba.nacos.persistence.datasource;
 
 import com.alibaba.nacos.api.exception.runtime.NacosRuntimeException;
+import com.alibaba.nacos.persistence.DerbyTestUtils;
 import com.alibaba.nacos.persistence.configuration.DatasourceConfiguration;
+import com.alibaba.nacos.persistence.constants.PersistenceConstant;
 import com.alibaba.nacos.sys.env.EnvUtil;
 import com.zaxxer.hikari.HikariDataSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.io.TempDir;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -32,6 +36,8 @@ import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import javax.sql.DataSource;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.sql.SQLException;
 import java.util.concurrent.Callable;
 
@@ -57,12 +63,28 @@ class LocalDataSourceServiceImplTest {
     @Mock
     private TransactionTemplate tjt;
     
+    @TempDir
+    private Path tempDir;
+    
+    private LocalDataSourceServiceImpl serviceToClose;
+    
     @BeforeEach
     void setUp() {
+        DerbyTestUtils.resetDynamicDataSource();
+        EnvUtil.setNacosHomePath(tempDir.toString());
+        EnvUtil.setEnvironment(DerbyTestUtils.createDerbyTestEnvironment());
+        DatasourceConfiguration.setEmbeddedStorage(true);
         DatasourceConfiguration.setUseExternalDb(false);
         service = new LocalDataSourceServiceImpl();
         ReflectionTestUtils.setField(service, "jt", jt);
         ReflectionTestUtils.setField(service, "tjt", tjt);
+    }
+    
+    @AfterEach
+    void tearDown() {
+        DerbyTestUtils.closeLocalDataSource(serviceToClose);
+        serviceToClose = null;
+        DerbyTestUtils.resetDerbyState(tempDir);
     }
     
     @Test
@@ -71,6 +93,7 @@ class LocalDataSourceServiceImplTest {
             DatasourceConfiguration.setUseExternalDb(true);
             EnvUtil.setEnvironment(null);
             LocalDataSourceServiceImpl service1 = new LocalDataSourceServiceImpl();
+            serviceToClose = service1;
             assertDoesNotThrow(service1::init);
         } finally {
             DatasourceConfiguration.setUseExternalDb(false);
@@ -80,12 +103,44 @@ class LocalDataSourceServiceImplTest {
     @Test
     void testInit() throws Exception {
         try {
-            EnvUtil.setEnvironment(new MockEnvironment());
+            EnvUtil.setEnvironment(DerbyTestUtils.createDerbyTestEnvironment());
             LocalDataSourceServiceImpl service1 = new LocalDataSourceServiceImpl();
+            serviceToClose = service1;
             assertDoesNotThrow(service1::init);
             assertNotNull(service1.getJdbcTemplate());
             assertNotNull(service1.getTransactionTemplate());
             assertEquals("derby", service1.getDataSourceType());
+        } finally {
+            EnvUtil.setEnvironment(null);
+        }
+    }
+    
+    @Test
+    void testAiResourceDescriptionCapacity() throws Exception {
+        try {
+            MockEnvironment environment = DerbyTestUtils.createDerbyTestEnvironment();
+            // Keep one connection available after schema initialization for boundary assertions.
+            environment.setProperty("db.pool.config.maximum-pool-size", "2");
+            EnvUtil.setEnvironment(environment);
+            LocalDataSourceServiceImpl service1 = new LocalDataSourceServiceImpl();
+            serviceToClose = service1;
+            service1.init();
+            JdbcTemplate jdbcTemplate = service1.getJdbcTemplate();
+            String description = "d".repeat(2048);
+            
+            jdbcTemplate.update(
+                "INSERT INTO ai_resource (name, type, c_desc, namespace_id) VALUES (?, ?, ?, ?)",
+                "agent", "agent", description, "public");
+            jdbcTemplate.update(
+                "INSERT INTO ai_resource_version "
+                    + "(type, name, c_desc, status, version, namespace_id) "
+                    + "VALUES (?, ?, ?, ?, ?, ?)",
+                "agent", "agent", description, "draft", "1.0.0", "public");
+            
+            assertEquals(description, jdbcTemplate.queryForObject(
+                "SELECT c_desc FROM ai_resource WHERE name = ?", String.class, "agent"));
+            assertEquals(description, jdbcTemplate.queryForObject(
+                "SELECT c_desc FROM ai_resource_version WHERE name = ?", String.class, "agent"));
         } finally {
             EnvUtil.setEnvironment(null);
         }
@@ -107,8 +162,9 @@ class LocalDataSourceServiceImplTest {
     @Test
     void testCleanAndReopen() throws Exception {
         try {
-            EnvUtil.setEnvironment(new MockEnvironment());
+            EnvUtil.setEnvironment(DerbyTestUtils.createDerbyTestEnvironment());
             LocalDataSourceServiceImpl service1 = new LocalDataSourceServiceImpl();
+            serviceToClose = service1;
             assertDoesNotThrow(service1::init);
             assertDoesNotThrow(service1::cleanAndReopenDerby);
         } finally {
@@ -119,11 +175,15 @@ class LocalDataSourceServiceImplTest {
     @Test
     void testRestoreDerby() throws Exception {
         try {
-            EnvUtil.setEnvironment(new MockEnvironment());
+            EnvUtil.setEnvironment(DerbyTestUtils.createDerbyTestEnvironment());
             LocalDataSourceServiceImpl service1 = new LocalDataSourceServiceImpl();
+            serviceToClose = service1;
             assertDoesNotThrow(service1::init);
             Callable callback = mock(Callable.class);
-            assertDoesNotThrow(() -> service1.restoreDerby(service1.getCurrentDbUrl(), callback));
+            String sourceUrl = "jdbc:derby:"
+                + Paths.get(EnvUtil.getNacosHome(), "data", PersistenceConstant.DERBY_BASE_DIR)
+                + ";create=true";
+            assertDoesNotThrow(() -> service1.restoreDerby(sourceUrl, callback));
             verify(callback).call();
         } finally {
             EnvUtil.setEnvironment(null);
@@ -133,9 +193,14 @@ class LocalDataSourceServiceImplTest {
     @Test
     void testGetDataSource() {
         HikariDataSource dataSource = new HikariDataSource();
-        dataSource.setJdbcUrl("test.jdbc.url");
-        when(jt.getDataSource()).thenReturn(dataSource);
-        assertEquals(dataSource.getJdbcUrl(), ((HikariDataSource) service.getDatasource()).getJdbcUrl());
+        try {
+            dataSource.setJdbcUrl("test.jdbc.url");
+            when(jt.getDataSource()).thenReturn(dataSource);
+            assertEquals(dataSource.getJdbcUrl(),
+                ((HikariDataSource) service.getDatasource()).getJdbcUrl());
+        } finally {
+            dataSource.close();
+        }
     }
     
     @Test
@@ -143,12 +208,4 @@ class LocalDataSourceServiceImplTest {
         assertTrue(service.checkMasterWritable());
     }
     
-    @Test
-    void testSetAndGetHealth() {
-        service.setHealthStatus("DOWN");
-        assertEquals("DOWN", service.getHealth());
-        
-        service.setHealthStatus("UP");
-        assertEquals("UP", service.getHealth());
-    }
 }

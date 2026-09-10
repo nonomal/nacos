@@ -29,10 +29,6 @@ public final class PromptDataIdUtils {
     private PromptDataIdUtils() {
     }
     
-    public static String buildMetaDataId(String promptKey) {
-        return buildDescriptorDataId(promptKey);
-    }
-    
     public static String buildDescriptorDataId(String promptKey) {
         return promptKey + Constants.Prompt.DESCRIPTOR_DATA_ID_SUFFIX;
     }
@@ -44,10 +40,6 @@ public final class PromptDataIdUtils {
     
     public static String buildLabelVersionMappingDataId(String promptKey) {
         return promptKey + Constants.Prompt.LABEL_VERSION_MAPPING_DATA_ID_SUFFIX;
-    }
-    
-    public static String buildLatestDataId(String promptKey) {
-        return promptKey + Constants.Prompt.PROMPT_DATA_ID_SUFFIX;
     }
     
     public static String buildVersionDataId(String promptKey, String version) {
@@ -65,7 +57,8 @@ public final class PromptDataIdUtils {
     }
     
     public static boolean isDescriptorDataId(String dataId) {
-        return StringUtils.isNotBlank(dataId) && dataId.endsWith(Constants.Prompt.DESCRIPTOR_DATA_ID_SUFFIX);
+        return StringUtils.isNotBlank(dataId)
+            && dataId.endsWith(Constants.Prompt.DESCRIPTOR_DATA_ID_SUFFIX);
     }
     
     @Deprecated
@@ -80,17 +73,8 @@ public final class PromptDataIdUtils {
      * @return true if mapping dataId
      */
     public static boolean isLabelVersionMappingDataId(String dataId) {
-        return StringUtils.isNotBlank(dataId) && dataId.endsWith(Constants.Prompt.LABEL_VERSION_MAPPING_DATA_ID_SUFFIX);
-    }
-    
-    /**
-     * Extract prompt key from prompt meta dataId.
-     *
-     * @param dataId config dataId
-     * @return prompt key if valid, otherwise null
-     */
-    public static String extractPromptKeyFromMetaDataId(String dataId) {
-        return extractPromptKeyFromDescriptorDataId(dataId);
+        return StringUtils.isNotBlank(dataId)
+            && dataId.endsWith(Constants.Prompt.LABEL_VERSION_MAPPING_DATA_ID_SUFFIX);
     }
     
     /**
@@ -103,7 +87,8 @@ public final class PromptDataIdUtils {
         if (!isDescriptorDataId(dataId)) {
             return null;
         }
-        return dataId.substring(0, dataId.length() - Constants.Prompt.DESCRIPTOR_DATA_ID_SUFFIX.length());
+        return dataId.substring(0,
+            dataId.length() - Constants.Prompt.DESCRIPTOR_DATA_ID_SUFFIX.length());
     }
     
     @Deprecated
@@ -111,16 +96,4 @@ public final class PromptDataIdUtils {
         return extractPromptKeyFromDescriptorDataId(dataId);
     }
     
-    /**
-     * Extract prompt key from mapping dataId.
-     *
-     * @param dataId config dataId
-     * @return prompt key if valid, otherwise null
-     */
-    public static String extractPromptKeyFromLabelVersionMappingDataId(String dataId) {
-        if (!isLabelVersionMappingDataId(dataId)) {
-            return null;
-        }
-        return dataId.substring(0, dataId.length() - Constants.Prompt.LABEL_VERSION_MAPPING_DATA_ID_SUFFIX.length());
-    }
 }

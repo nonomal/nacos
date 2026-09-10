@@ -23,12 +23,11 @@ import com.alibaba.nacos.common.lifecycle.Closeable;
 /**
  * AI client proxy interface for abstracting transport layer (gRPC / HTTP).
  *
- * <p>Defines AI operations that support switching between gRPC and HTTP transport.
- * Currently covers Prompt operations; extensible for Skill and other capabilities.</p>
+ * <p>Defines AI operations that support switching between gRPC and HTTP transport.</p>
  *
  * @author nacos
  */
-public interface AiClientProxy extends Closeable {
+public interface AiClientProxy extends AgentClientProxy, Closeable {
     
     /**
      * Query prompt by latest/version/label with optional md5 for conditional query.
@@ -40,5 +39,40 @@ public interface AiClientProxy extends Closeable {
      * @return prompt detail
      * @throws NacosException if request parameter is invalid or handle error
      */
-    Prompt queryPrompt(String promptKey, String version, String label, String md5) throws NacosException;
+    Prompt queryPrompt(String promptKey, String version, String label, String md5)
+        throws NacosException;
+    
+    /**
+     * Query skill by latest/version/label with optional md5 for conditional download.
+     *
+     * <p>When {@code md5} matches the server-published content fingerprint, the implementation
+     * MUST throw {@link NacosException} with code {@link NacosException#NOT_MODIFIED} so the
+     * caller can keep its local cache.
+     *
+     * @param skillName skill name
+     * @param version   skill version, optional
+     * @param label     skill label, optional
+     * @param md5       client md5 for conditional query, optional
+     * @return skill ZIP bytes plus the published content MD5 and resolved version headers
+     * @throws NacosException if request parameter is invalid or handle error
+     */
+    SkillQueryResponse querySkill(String skillName, String version, String label, String md5)
+        throws NacosException;
+    
+    /**
+     * Query agentspec by latest/version/label with optional md5 for conditional query.
+     *
+     * <p>When {@code md5} matches the server-published content fingerprint, the implementation
+     * MUST throw {@link NacosException} with code {@link NacosException#NOT_MODIFIED} so the
+     * caller can keep its local cache.
+     *
+     * @param agentSpecName agentspec name
+     * @param version       agentspec version, optional
+     * @param label         agentspec label, optional
+     * @param md5           client md5 for conditional query, optional
+     * @return agentspec plus the published content MD5 and resolved version headers
+     * @throws NacosException if request parameter is invalid or handle error
+     */
+    AgentSpecQueryResponse queryAgentSpec(String agentSpecName, String version, String label,
+        String md5) throws NacosException;
 }

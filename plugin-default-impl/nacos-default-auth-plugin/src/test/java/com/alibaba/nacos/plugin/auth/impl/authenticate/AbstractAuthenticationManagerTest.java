@@ -34,11 +34,14 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -103,6 +106,34 @@ public class AbstractAuthenticationManagerTest {
     }
     
     @Test
+    void testUnknownUserAndWrongPasswordReturnSameFailure() {
+        NacosUserDetails nacosUserDetails = new NacosUserDetails(user);
+        when(userDetailsService.loadUserByUsername("missing"))
+            .thenThrow(new UsernameNotFoundException("User missing not found"));
+        when(userDetailsService.loadUserByUsername("nacos")).thenReturn(nacosUserDetails);
+        
+        AccessException unknownUser = assertThrows(AccessException.class,
+            () -> abstractAuthenticationManager.authenticate("missing", "test"));
+        AccessException wrongPassword = assertThrows(AccessException.class,
+            () -> abstractAuthenticationManager.authenticate("nacos", "wrong"));
+        
+        assertEquals("User not found! Please check user exist or password is right!",
+            unknownUser.getErrMsg());
+        assertEquals(unknownUser.getErrMsg(), wrongPassword.getErrMsg());
+    }
+    
+    @Test
+    void testUnexpectedUserLookupFailureIsNotConvertedToAuthenticationFailure() {
+        when(userDetailsService.loadUserByUsername("nacos"))
+            .thenThrow(new IllegalStateException("database unavailable"));
+        
+        IllegalStateException actual = assertThrows(IllegalStateException.class,
+            () -> abstractAuthenticationManager.authenticate("nacos", "test"));
+        
+        assertEquals("database unavailable", actual.getMessage());
+    }
+    
+    @Test
     void testAuthenticate5() {
         assertThrows(AccessException.class, () -> {
             abstractAuthenticationManager.authenticate("");
@@ -125,7 +156,8 @@ public class AbstractAuthenticationManagerTest {
         when(jwtTokenManager.parseToken(anyString())).thenReturn(nacosUser);
         
         MockHttpServletRequest mockHttpServletRequest = new MockHttpServletRequest();
-        mockHttpServletRequest.addHeader(AuthConstants.AUTHORIZATION_HEADER, AuthConstants.TOKEN_PREFIX + "-token");
+        mockHttpServletRequest.addHeader(AuthConstants.AUTHORIZATION_HEADER,
+            AuthConstants.TOKEN_PREFIX + "-token");
         NacosUser authenticate = abstractAuthenticationManager.authenticate(mockHttpServletRequest);
         
         assertEquals(nacosUser, authenticate);
@@ -169,6 +201,25 @@ public class AbstractAuthenticationManagerTest {
         assertThrows(AccessException.class, () -> {
             abstractAuthenticationManager.authorize(permission, nacosUser);
         });
+    }
+    
+    @Test
+    void testAuthorizeAllowsGlobalAdminUser() {
+        Permission permission = new Permission();
+        NacosUser nacosUser = new NacosUser("nacos");
+        nacosUser.setGlobalAdmin(true);
+        
+        assertDoesNotThrow(() -> abstractAuthenticationManager.authorize(permission, nacosUser));
+    }
+    
+    @Test
+    void testAuthorizeAllowsGlobalAdminRole() {
+        Permission permission = new Permission();
+        NacosUser nacosUser = new NacosUser("nacos");
+        when(roleService.hasGlobalAdminRole("nacos")).thenReturn(true);
+        
+        assertDoesNotThrow(() -> abstractAuthenticationManager.authorize(permission, nacosUser));
+        verify(roleService).hasGlobalAdminRole("nacos");
     }
     
     @Test

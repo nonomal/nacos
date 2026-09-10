@@ -17,6 +17,7 @@
 package com.alibaba.nacos.sys.utils;
 
 import com.alibaba.nacos.common.utils.ByteUtils;
+import com.alibaba.nacos.common.utils.PathSafetyUtils;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.io.output.NullOutputStream;
@@ -51,9 +52,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
 
-import static com.alibaba.nacos.common.utils.StringUtils.FOLDER_SEPARATOR;
 import static com.alibaba.nacos.common.utils.StringUtils.TOP_PATH;
-import static com.alibaba.nacos.common.utils.StringUtils.WINDOWS_FOLDER_SEPARATOR;
 
 /**
  * IO operates on the utility class.
@@ -74,8 +73,6 @@ public final class DiskUtils {
     
     private static final Charset CHARSET = StandardCharsets.UTF_8;
     
-    private static final CharsetDecoder DECODER = CHARSET.newDecoder();
-    
     /**
      * Touch file.
      *
@@ -84,10 +81,11 @@ public final class DiskUtils {
      * @throws IOException during touch
      */
     public static void touch(String path, String fileName) throws IOException {
-        if (isIllegalPath(path) || isIllegalFileName(fileName)) {
+        File targetFile = resolveDirectChildFile(path, fileName);
+        if (targetFile == null) {
             return;
         }
-        touch(Paths.get(path, fileName).toFile());
+        touch(targetFile);
     }
     
     /**
@@ -175,7 +173,8 @@ public final class DiskUtils {
      * @return content
      */
     public static String readFile(InputStream is) {
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8))) {
+        try (BufferedReader reader =
+            new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8))) {
             StringBuilder textBuilder = new StringBuilder();
             String lineTxt = null;
             while ((lineTxt = reader.readLine()) != null) {
@@ -194,20 +193,35 @@ public final class DiskUtils {
      * @return content
      */
     public static String readFile(File file) {
+        // CharsetDecoder is documented as not safe for concurrent use, so allocate one per call
+        // instead of sharing a static instance across threads.
+        CharsetDecoder decoder = CHARSET.newDecoder();
         try (FileInputStream fis = new FileInputStream(file);
-                FileChannel fileChannel = fis.getChannel()) {
+            FileChannel fileChannel = fis.getChannel()) {
             StringBuilder text = new StringBuilder();
             ByteBuffer buffer = ByteBuffer.allocate(4096);
             CharBuffer charBuffer = CharBuffer.allocate(4096);
             while (fileChannel.read(buffer) != -1) {
                 buffer.flip();
-                DECODER.decode(buffer, charBuffer, false);
+                decoder.decode(buffer, charBuffer, false);
                 charBuffer.flip();
                 while (charBuffer.hasRemaining()) {
                     text.append(charBuffer.get());
                 }
-                buffer.clear();
+                // compact() preserves any bytes the decoder did not consume - typically the leading
+                // bytes of a multi-byte UTF-8 character that straddles the 4096-byte chunk boundary.
+                // The previous clear() silently discarded those bytes, corrupting any non-ASCII
+                // content longer than one chunk.
+                buffer.compact();
                 charBuffer.clear();
+            }
+            // Flush the trailing partial input and any decoder state once the stream is exhausted.
+            buffer.flip();
+            decoder.decode(buffer, charBuffer, true);
+            decoder.flush(charBuffer);
+            charBuffer.flip();
+            while (charBuffer.hasRemaining()) {
+                text.append(charBuffer.get());
             }
             return text.toString();
         } catch (IOException e) {
@@ -239,11 +253,8 @@ public final class DiskUtils {
      * @return content bytes
      */
     public static byte[] readFileBytes(String path, String fileName) {
-        if (isIllegalPath(path) || isIllegalFileName(fileName)) {
-            return null;
-        }
         File file = openFile(path, fileName);
-        return readFileBytes(file);
+        return file == null ? null : readFileBytes(file);
     }
     
     /**
@@ -256,15 +267,16 @@ public final class DiskUtils {
      */
     public static boolean writeFile(File file, byte[] content, boolean append) {
         try (FileOutputStream fos = new FileOutputStream(file, append);
-                FileChannel fileChannel = fos.getChannel()) {
+            FileChannel fileChannel = fos.getChannel()) {
             ByteBuffer buffer = ByteBuffer.wrap(content);
             fileChannel.write(buffer);
             return true;
         } catch (IOException ioe) {
             if (ioe.getMessage() != null) {
                 String errMsg = ioe.getMessage();
-                if (NO_SPACE_CN.equals(errMsg) || NO_SPACE_EN.equals(errMsg) || errMsg.contains(DISK_QUOTA_CN)
-                        || errMsg.contains(DISK_QUOTA_EN)) {
+                if (NO_SPACE_CN.equals(errMsg) || NO_SPACE_EN.equals(errMsg)
+                    || errMsg.contains(DISK_QUOTA_CN)
+                    || errMsg.contains(DISK_QUOTA_EN)) {
                     LOGGER.warn("磁盘满，自杀退出");
                     System.exit(0);
                 }
@@ -291,10 +303,10 @@ public final class DiskUtils {
      * @return delete success
      */
     public static boolean deleteFile(String path, String fileName) {
-        if (isIllegalPath(path) || isIllegalFileName(fileName)) {
+        File file = resolveDirectChildFile(path, fileName);
+        if (file == null) {
             return false;
         }
-        File file = Paths.get(path, fileName).toFile();
         if (file.exists()) {
             return file.delete();
         }
@@ -339,7 +351,8 @@ public final class DiskUtils {
      * @return {@link File}
      */
     public static File openFile(String path, String fileName, boolean rewrite) {
-        if (isIllegalPath(path) || isIllegalFileName(fileName)) {
+        File file = resolveDirectChildFile(path, fileName);
+        if (file == null) {
             return null;
         }
         File directory = new File(path);
@@ -351,7 +364,6 @@ public final class DiskUtils {
             LOGGER.error("[DiskUtils] can't create directory");
             return null;
         }
-        File file = new File(path, fileName);
         try {
             boolean create = true;
             if (!file.exists()) {
@@ -384,11 +396,12 @@ public final class DiskUtils {
      * @param checksum   checksum
      * @throws IOException IOException
      */
-    public static void compress(final String rootDir, final String sourceDir, final String outputFile,
-            final Checksum checksum) throws IOException {
+    public static void compress(final String rootDir, final String sourceDir,
+        final String outputFile,
+        final Checksum checksum) throws IOException {
         try (final FileOutputStream fos = new FileOutputStream(outputFile);
-                final CheckedOutputStream cos = new CheckedOutputStream(fos, checksum);
-                final ZipOutputStream zos = new ZipOutputStream(new BufferedOutputStream(cos))) {
+            final CheckedOutputStream cos = new CheckedOutputStream(fos, checksum);
+            final ZipOutputStream zos = new ZipOutputStream(new BufferedOutputStream(cos))) {
             compressDirectoryToZipFile(rootDir, sourceDir, zos);
             zos.flush();
             fos.getFD().sync();
@@ -398,7 +411,7 @@ public final class DiskUtils {
     // copy from sofa-jraft
     
     private static void compressDirectoryToZipFile(final String rootDir, final String sourceDir,
-            final ZipOutputStream zos) throws IOException {
+        final ZipOutputStream zos) throws IOException {
         final String dir = Paths.get(rootDir, sourceDir).toString();
         final File[] files = Objects.requireNonNull(new File(dir).listFiles(), "files");
         for (final File file : files) {
@@ -407,8 +420,14 @@ public final class DiskUtils {
                 compressDirectoryToZipFile(rootDir, child, zos);
             } else {
                 try (final FileInputStream fis = new FileInputStream(file);
-                        final BufferedInputStream bis = new BufferedInputStream(fis)) {
-                    compressIntoZipFile(child, bis, zos);
+                    final BufferedInputStream bis = new BufferedInputStream(fis)) {
+                    final String entryName;
+                    try {
+                        entryName = PathSafetyUtils.normalizeArchiveEntryName(child);
+                    } catch (IllegalArgumentException e) {
+                        throw new IOException("Unsafe archive entry name", e);
+                    }
+                    compressIntoZipFile(entryName, bis, zos);
                 }
             }
         }
@@ -424,21 +443,26 @@ public final class DiskUtils {
      * @throws IOException IOException during compress
      */
     public static void compressIntoZipFile(final String childName, final InputStream inputStream,
-            final String outputFile, final Checksum checksum) throws IOException {
-        if (isIllegalFileName(childName)) {
+        final String outputFile, final Checksum checksum) throws IOException {
+        final String entryName;
+        try {
+            entryName = PathSafetyUtils.normalizeArchiveEntryName(childName);
+        } catch (IllegalArgumentException e) {
             return;
         }
         try (final FileOutputStream fileOutputStream = new FileOutputStream(outputFile);
-                final CheckedOutputStream checkedOutputStream = new CheckedOutputStream(fileOutputStream, checksum);
-                final ZipOutputStream zipStream = new ZipOutputStream(new BufferedOutputStream(checkedOutputStream))) {
-            compressIntoZipFile(childName, inputStream, zipStream);
+            final CheckedOutputStream checkedOutputStream =
+                new CheckedOutputStream(fileOutputStream, checksum);
+            final ZipOutputStream zipStream =
+                new ZipOutputStream(new BufferedOutputStream(checkedOutputStream))) {
+            compressIntoZipFile(entryName, inputStream, zipStream);
             zipStream.flush();
             fileOutputStream.getFD().sync();
         }
     }
     
     private static void compressIntoZipFile(final String childName, final InputStream inputStream,
-            final ZipOutputStream zipOutputStream) throws IOException {
+        final ZipOutputStream zipOutputStream) throws IOException {
         zipOutputStream.putNextEntry(new ZipEntry(childName));
         IOUtils.copy(inputStream, zipOutputStream);
     }
@@ -453,21 +477,30 @@ public final class DiskUtils {
      * @param checksum   checksum
      * @throws IOException IOException
      */
-    public static void decompress(final String sourceFile, final String outputDir, final Checksum checksum)
-            throws IOException {
+    public static void decompress(final String sourceFile, final String outputDir,
+        final Checksum checksum)
+        throws IOException {
+        final Path outputPath = Paths.get(outputDir).toAbsolutePath().normalize();
         try (final FileInputStream fis = new FileInputStream(sourceFile);
-                final CheckedInputStream cis = new CheckedInputStream(fis, checksum);
-                final ZipInputStream zis = new ZipInputStream(new BufferedInputStream(cis))) {
+            final CheckedInputStream cis = new CheckedInputStream(fis, checksum);
+            final ZipInputStream zis = new ZipInputStream(new BufferedInputStream(cis))) {
             ZipEntry entry;
             while ((entry = zis.getNextEntry()) != null) {
                 final String fileName = entry.getName();
-                if (isIllegalFileName(fileName)) {
+                final Path entryPath;
+                try {
+                    entryPath = PathSafetyUtils.resolveArchiveEntry(outputPath, fileName);
+                } catch (IllegalArgumentException e) {
                     continue;
                 }
-                final File entryFile = new File(Paths.get(outputDir, fileName).toString());
+                final File entryFile = entryPath.toFile();
+                if (entry.isDirectory()) {
+                    FileUtils.forceMkdir(entryFile);
+                    continue;
+                }
                 FileUtils.forceMkdir(entryFile.getParentFile());
                 try (final FileOutputStream fos = new FileOutputStream(entryFile);
-                        final BufferedOutputStream bos = new BufferedOutputStream(fos)) {
+                    final BufferedOutputStream bos = new BufferedOutputStream(fos)) {
                     IOUtils.copy(zis, bos);
                     bos.flush();
                     fos.getFD().sync();
@@ -489,12 +522,13 @@ public final class DiskUtils {
      * @return decompress byte array
      * @throws IOException IOException during decompress
      */
-    public static byte[] decompress(final String sourceFile, final Checksum checksum) throws IOException {
+    public static byte[] decompress(final String sourceFile, final Checksum checksum)
+        throws IOException {
         byte[] result;
         try (final FileInputStream fis = new FileInputStream(sourceFile);
-                final CheckedInputStream cis = new CheckedInputStream(fis, checksum);
-                final ZipInputStream zis = new ZipInputStream(new BufferedInputStream(cis));
-                final ByteArrayOutputStream bos = new ByteArrayOutputStream(1024)) {
+            final CheckedInputStream cis = new CheckedInputStream(fis, checksum);
+            final ZipInputStream zis = new ZipInputStream(new BufferedInputStream(cis));
+            final ByteArrayOutputStream bos = new ByteArrayOutputStream(1024)) {
             while (zis.getNextEntry() != null) {
                 IOUtils.copy(zis, bos);
                 bos.flush();
@@ -506,15 +540,29 @@ public final class DiskUtils {
     }
     
     /**
-     * Whether is illegal file name, it should not be start with root path '/' or '\\' and should not contain top path
-     * <code>..</code>.
+     * Check whether a file name may escape its intended direct-child target.
      *
-     * @param fileName File name
-     * @return {@code true} when file name contain <code>..</code> or start with root path.
+     * @param fileName file name
+     * @return {@code true} when the name may resolve to an unintended target
      */
     public static boolean isIllegalFileName(String fileName) {
-        return fileName.contains(TOP_PATH) || fileName.startsWith(FOLDER_SEPARATOR) || fileName.startsWith(
-                WINDOWS_FOLDER_SEPARATOR);
+        try {
+            PathSafetyUtils.validateDirectChildName(fileName);
+            return false;
+        } catch (IllegalArgumentException e) {
+            return true;
+        }
+    }
+    
+    private static File resolveDirectChildFile(String path, String fileName) {
+        if (isIllegalPath(path)) {
+            return null;
+        }
+        try {
+            return PathSafetyUtils.resolveDirectChild(Paths.get(path), fileName).toFile();
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
     }
     
     public static boolean isIllegalPath(String path) {

@@ -35,15 +35,21 @@ public class SkillListForm extends SkillForm {
     
     private String search;
     
+    /**
+     * Sort field. Supported values: "download_count". Defaults to gmt_modified when null or empty.
+     */
+    private String orderBy;
+    
     @Override
     public void validate() throws NacosApiException {
         fillDefaultNamespaceId();
         // For list query, skillName is optional
-        if (StringUtils.isNotBlank(search) 
-                && !Constants.Skills.SEARCH_ACCURATE.equalsIgnoreCase(search)
-                && !Constants.Skills.SEARCH_BLUR.equalsIgnoreCase(search)) {
-            throw new NacosApiException(NacosApiException.INVALID_PARAM, ErrorCode.PARAMETER_VALIDATE_ERROR,
-                    "Request parameter `search` should be `accurate` or `blur`.");
+        if (StringUtils.isNotBlank(search)
+            && !Constants.Skills.SEARCH_ACCURATE.equalsIgnoreCase(search)
+            && !Constants.Skills.SEARCH_BLUR.equalsIgnoreCase(search)) {
+            throw new NacosApiException(NacosApiException.INVALID_PARAM,
+                ErrorCode.PARAMETER_VALIDATE_ERROR,
+                "Request parameter `search` should be `accurate` or `blur`.");
         }
     }
     
@@ -53,5 +59,13 @@ public class SkillListForm extends SkillForm {
     
     public void setSearch(String search) {
         this.search = search;
+    }
+    
+    public String getOrderBy() {
+        return orderBy;
+    }
+    
+    public void setOrderBy(String orderBy) {
+        this.orderBy = orderBy;
     }
 }

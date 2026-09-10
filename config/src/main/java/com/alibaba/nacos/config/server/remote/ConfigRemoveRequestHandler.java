@@ -16,14 +16,17 @@
 
 package com.alibaba.nacos.config.server.remote;
 
+import com.alibaba.nacos.api.annotation.Since;
 import com.alibaba.nacos.api.config.remote.request.ConfigRemoveRequest;
 import com.alibaba.nacos.api.config.remote.response.ConfigRemoveResponse;
 import com.alibaba.nacos.api.exception.NacosException;
 import com.alibaba.nacos.api.remote.request.RequestMeta;
+import com.alibaba.nacos.api.remote.response.ResponseCode;
 import com.alibaba.nacos.auth.annotation.Secured;
 import com.alibaba.nacos.common.utils.NamespaceUtil;
 import com.alibaba.nacos.config.server.constant.Constants;
 import com.alibaba.nacos.config.server.service.ConfigOperationService;
+import com.alibaba.nacos.config.server.service.dump.disk.ConfigDiskPathException;
 import com.alibaba.nacos.config.server.service.repository.ConfigInfoGrayPersistService;
 import com.alibaba.nacos.config.server.service.repository.ConfigInfoPersistService;
 import com.alibaba.nacos.config.server.utils.ParamUtils;
@@ -43,8 +46,10 @@ import org.springframework.stereotype.Component;
  * @author liuzunfei
  * @version $Id: ConfiRemoveRequestHandler.java, v 0.1 2020年07月16日 5:49 PM liuzunfei Exp $
  */
+@Since("2.0.0")
 @Component
-public class ConfigRemoveRequestHandler extends RequestHandler<ConfigRemoveRequest, ConfigRemoveResponse> {
+public class ConfigRemoveRequestHandler
+    extends RequestHandler<ConfigRemoveRequest, ConfigRemoveResponse> {
     
     private final ConfigInfoPersistService configInfoPersistService;
     
@@ -53,7 +58,8 @@ public class ConfigRemoveRequestHandler extends RequestHandler<ConfigRemoveReque
     private final ConfigOperationService configOperationService;
     
     public ConfigRemoveRequestHandler(ConfigInfoPersistService configInfoPersistService,
-            ConfigInfoGrayPersistService configInfoGrayPersistService, ConfigOperationService configOperationService) {
+        ConfigInfoGrayPersistService configInfoGrayPersistService,
+        ConfigOperationService configOperationService) {
         this.configInfoPersistService = configInfoPersistService;
         this.configInfoGrayPersistService = configInfoGrayPersistService;
         this.configOperationService = configOperationService;
@@ -65,7 +71,7 @@ public class ConfigRemoveRequestHandler extends RequestHandler<ConfigRemoveReque
     @Secured(action = ActionTypes.WRITE, signType = SignType.CONFIG)
     @ExtractorManager.Extractor(rpcExtractor = ConfigRequestParamExtractor.class)
     public ConfigRemoveResponse handle(ConfigRemoveRequest configRemoveRequest, RequestMeta meta)
-            throws NacosException {
+        throws NacosException {
         // check tenant
         String tenant = configRemoveRequest.getTenant();
         tenant = NamespaceUtil.processNamespaceParameter(tenant);
@@ -77,12 +83,28 @@ public class ConfigRemoveRequestHandler extends RequestHandler<ConfigRemoveReque
             ParamUtils.checkParam(dataId, group, "datumId", "rm");
             ParamUtils.checkParam(tag);
             String clientIp = meta.getClientIp();
-            configOperationService.deleteConfig(dataId, group, tenant, tag, clientIp, null, Constants.RPC);
+            configOperationService.deleteConfig(dataId, group, tenant, tag, clientIp, null,
+                Constants.RPC);
             return ConfigRemoveResponse.buildSuccessResponse();
         } catch (Exception e) {
             Loggers.REMOTE_DIGEST.error("remove config error,error msg is {}", e.getMessage(), e);
-            return ConfigRemoveResponse.buildFailResponse(e.getMessage());
+            ConfigRemoveResponse response = ConfigRemoveResponse.buildFailResponse(e.getMessage());
+            response.setErrorCode(resolveErrorCode(e));
+            return response;
         }
+    }
+    
+    private int resolveErrorCode(Exception exception) {
+        if (exception instanceof NacosException) {
+            return ((NacosException) exception).getErrCode();
+        }
+        if (exception instanceof ConfigDiskPathException) {
+            return ((ConfigDiskPathException) exception).getErrCode();
+        }
+        if (exception instanceof IllegalArgumentException) {
+            return NacosException.INVALID_PARAM;
+        }
+        return ResponseCode.FAIL.getCode();
     }
     
 }

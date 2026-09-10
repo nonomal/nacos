@@ -56,7 +56,8 @@ class ConfigQueryResponseTest extends BasedConfigResponseTest {
     @Override
     @Test
     public void testSerializeFailResponse() throws JsonProcessingException {
-        ConfigQueryResponse configQueryResponse = ConfigQueryResponse.buildFailResponse(500, "Fail");
+        ConfigQueryResponse configQueryResponse =
+            ConfigQueryResponse.buildFailResponse(500, "Fail");
         String json = mapper.writeValueAsString(configQueryResponse);
         assertTrue(json.contains("\"resultCode\":" + ResponseCode.FAIL.getCode()));
         assertTrue(json.contains("\"errorCode\":500"));
@@ -67,7 +68,8 @@ class ConfigQueryResponseTest extends BasedConfigResponseTest {
     @Override
     @Test
     public void testDeserialize() throws JsonProcessingException {
-        String json = "{\"resultCode\":200,\"errorCode\":0,\"requestId\":\"2239753e-e682-441c-83cf-fb8129ca68a4\","
+        String json =
+            "{\"resultCode\":200,\"errorCode\":0,\"requestId\":\"2239753e-e682-441c-83cf-fb8129ca68a4\","
                 + "\"content\":\"success\",\"encryptedDataKey\":\"encryptedKey\",\"contentType\":\"text\",\"md5\":\"test_MD5\","
                 + "\"lastModified\":1111111,\"tag\":\"tag\",\"beta\":false,\"success\":true}\n";
         ConfigQueryResponse actual = mapper.readValue(json, ConfigQueryResponse.class);
@@ -80,5 +82,22 @@ class ConfigQueryResponseTest extends BasedConfigResponseTest {
         assertEquals(TAG, actual.getTag());
         assertEquals("text", actual.getContentType());
         assertEquals(1111111L, actual.getLastModified());
+    }
+    
+    @Test
+    void testConfigNotModifiedConstant() {
+        assertEquals(304, ConfigQueryResponse.CONFIG_NOT_MODIFIED);
+    }
+    
+    @Test
+    void testBuildNotModifiedResponse() {
+        ConfigQueryResponse response = new ConfigQueryResponse();
+        response.setErrorInfo(ConfigQueryResponse.CONFIG_NOT_MODIFIED,
+            "config not modified, use local cache");
+        response.setMd5("cached-md5");
+        
+        assertEquals(ConfigQueryResponse.CONFIG_NOT_MODIFIED, response.getErrorCode());
+        assertEquals("cached-md5", response.getMd5());
+        assertEquals("config not modified, use local cache", response.getMessage());
     }
 }

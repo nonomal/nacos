@@ -18,10 +18,12 @@ package com.alibaba.nacos.config.server.remote;
 
 import com.alibaba.nacos.api.config.remote.request.ConfigRemoveRequest;
 import com.alibaba.nacos.api.config.remote.response.ConfigRemoveResponse;
+import com.alibaba.nacos.api.exception.NacosException;
 import com.alibaba.nacos.api.remote.request.RequestMeta;
 import com.alibaba.nacos.api.remote.response.ResponseCode;
 import com.alibaba.nacos.config.server.constant.Constants;
 import com.alibaba.nacos.config.server.service.ConfigOperationService;
+import com.alibaba.nacos.config.server.service.dump.disk.ConfigDiskPathException;
 import com.alibaba.nacos.config.server.service.repository.ConfigInfoGrayPersistService;
 import com.alibaba.nacos.config.server.service.repository.ConfigInfoPersistService;
 import org.junit.jupiter.api.BeforeEach;
@@ -38,6 +40,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -57,7 +60,7 @@ class ConfigRemoveRequestHandlerTest {
     @BeforeEach
     void setUp() throws Exception {
         configRemoveRequestHandler = new ConfigRemoveRequestHandler(configInfoPersistService,
-                configInfoGrayPersistService, configOperationService);
+            configInfoGrayPersistService, configOperationService);
     }
     
     @Test
@@ -71,25 +74,26 @@ class ConfigRemoveRequestHandlerTest {
         meta.setClientIp("1.1.1.1");
         
         when(configOperationService.deleteConfig(
-                anyString(),
-                anyString(),
-                anyString(),
-                isNull(),
-                eq("1.1.1.1"),
-                isNull(),
-                eq(Constants.RPC))).thenReturn(true);
-
-        ConfigRemoveResponse response = configRemoveRequestHandler.handle(configRemoveRequest, meta);
-
+            anyString(),
+            anyString(),
+            anyString(),
+            isNull(),
+            eq("1.1.1.1"),
+            isNull(),
+            eq(Constants.RPC))).thenReturn(true);
+        
+        ConfigRemoveResponse response =
+            configRemoveRequestHandler.handle(configRemoveRequest, meta);
+        
         assertEquals(ResponseCode.SUCCESS.getCode(), response.getResultCode());
         verify(configOperationService, times(1)).deleteConfig(
-                anyString(),
-                anyString(),
-                anyString(),
-                isNull(),
-                eq("1.1.1.1"),
-                isNull(),
-                eq(Constants.RPC));
+            anyString(),
+            anyString(),
+            anyString(),
+            isNull(),
+            eq("1.1.1.1"),
+            isNull(),
+            eq(Constants.RPC));
     }
     
     @Test
@@ -103,17 +107,57 @@ class ConfigRemoveRequestHandlerTest {
         meta.setClientIp("1.1.1.1");
         
         when(configOperationService.deleteConfig(
-                anyString(),
-                anyString(),
-                anyString(),
-                isNull(),
-                eq("1.1.1.1"),
-                isNull(),
-                eq(Constants.RPC))).thenThrow(new RuntimeException("test exception"));
+            anyString(),
+            anyString(),
+            anyString(),
+            isNull(),
+            eq("1.1.1.1"),
+            isNull(),
+            eq(Constants.RPC))).thenThrow(new RuntimeException("test exception"));
         
-        ConfigRemoveResponse response = configRemoveRequestHandler.handle(configRemoveRequest, meta);
+        ConfigRemoveResponse response =
+            configRemoveRequestHandler.handle(configRemoveRequest, meta);
         
         assertNotEquals(ResponseCode.SUCCESS.getCode(), response.getResultCode());
+        assertEquals(ResponseCode.FAIL.getCode(), response.getErrorCode());
         assertTrue(response.getMessage().contains("test exception"));
+    }
+    
+    @Test
+    void testHandleInvalidDiskIdentityReturnsInvalidParam() throws Exception {
+        assertInvalidParam(newRemoveRequest("dataId", "..", "tenant", null));
+        assertInvalidParam(newRemoveRequest("dataId", "group", "..", null));
+        assertInvalidParam(newRemoveRequest("dataId", "group", "tenant", ".."));
+        verifyNoInteractions(configOperationService);
+    }
+    
+    @Test
+    void testHandleRejectedDiskPathReturnsInvalidParam() throws Exception {
+        ConfigRemoveRequest request = newRemoveRequest("dataId", "group", "tenant", null);
+        when(configOperationService.deleteConfig(anyString(), anyString(), anyString(), isNull(),
+            anyString(), isNull(), eq(Constants.RPC)))
+            .thenThrow(new ConfigDiskPathException("group", ".."));
+        
+        assertInvalidParam(request);
+    }
+    
+    private void assertInvalidParam(ConfigRemoveRequest request) throws Exception {
+        RequestMeta meta = new RequestMeta();
+        meta.setClientIp("1.1.1.1");
+        
+        ConfigRemoveResponse response = configRemoveRequestHandler.handle(request, meta);
+        
+        assertEquals(ResponseCode.FAIL.getCode(), response.getResultCode());
+        assertEquals(NacosException.INVALID_PARAM, response.getErrorCode());
+    }
+    
+    private ConfigRemoveRequest newRemoveRequest(String dataId, String group, String tenant,
+        String tag) {
+        ConfigRemoveRequest request = new ConfigRemoveRequest();
+        request.setDataId(dataId);
+        request.setGroup(group);
+        request.setTenant(tenant);
+        request.setTag(tag);
+        return request;
     }
 }

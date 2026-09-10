@@ -44,22 +44,14 @@
         </dependency>
         <dependency>
             <groupId>com.alibaba.nacos</groupId>
-            <artifactId>nacos-mcp-registry-adaptor</artifactId>
+            <artifactId>nacos-ai-registry-adaptor</artifactId>
         </dependency>
         <dependency>
             <groupId>com.alibaba.nacos</groupId>
-            <artifactId>default-auth-plugin</artifactId>
+            <artifactId>nacos-datasource-plugin-base</artifactId>
             <version>${revision}</version>
 
         </dependency>
-        <dependency>
-            <groupId>com.alibaba.nacos</groupId>
-            <artifactId>default-datasource-plugin</artifactId>
-            <version>${revision}</version>
-
-        </dependency>
-
-
     </dependencies>
     
     <profiles>

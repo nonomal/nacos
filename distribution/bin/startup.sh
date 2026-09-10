@@ -27,9 +27,45 @@ error_exit ()
     exit 1
 }
 
+configure_riscv64_libatomic() {
+    if [ "$(uname -s)" != "Linux" ] || [ "$(uname -m)" != "riscv64" ]; then
+        return
+    fi
+
+    if [[ "${LD_PRELOAD:-}" == *"libatomic.so.1"* ]]; then
+        return
+    fi
+
+    local libatomic_path=""
+    if command -v ldconfig > /dev/null 2>&1 && command -v awk > /dev/null 2>&1; then
+        libatomic_path=$(ldconfig -p 2> /dev/null | awk '/libatomic\.so\.1 .*=>/ {print $NF; exit}')
+    fi
+
+    if [ -z "${libatomic_path}" ] || [ ! -r "${libatomic_path}" ]; then
+        local candidate
+        for candidate in /lib/riscv64-linux-gnu/libatomic.so.1 \
+                         /usr/lib/riscv64-linux-gnu/libatomic.so.1 \
+                         /lib64/lp64d/libatomic.so.1 \
+                         /usr/lib64/lp64d/libatomic.so.1 \
+                         /lib64/libatomic.so.1 \
+                         /usr/lib64/libatomic.so.1; do
+            if [ -r "${candidate}" ]; then
+                libatomic_path="${candidate}"
+                break
+            fi
+        done
+    fi
+
+    if [ -z "${libatomic_path}" ] || [ ! -r "${libatomic_path}" ]; then
+        return
+    fi
+
+    export LD_PRELOAD="${LD_PRELOAD:+${LD_PRELOAD}:}${libatomic_path}"
+}
+
 validate_base64() {
     decode_cmd=""
-    if command -v base64 &> /dev/null; then
+    if command -v base64 > /dev/null 2>&1; then
         decode_cmd="base64 -d"
     else
         return 0;
@@ -38,13 +74,13 @@ validate_base64() {
     decoded_content=$(echo "$input_str" | $decode_cmd)
     decoded_result=$?
     if [ $decoded_result -ne 0 ]; then
-        echo "Invalid Base64 string: $input_str, please input again."
+        echo "Invalid Base64 string, please input again."
         return 1
     fi
     decoded_content_length=$(echo -n "$decoded_content" | wc -c)
     # adapt macOS base64 -d
     if [ ${decoded_content_length} -eq 0 ]; then
-        echo "Invalid Base64 string: $input_str, please input again."
+        echo "Invalid Base64 string, please input again."
         return 1
     fi
     if [ ${decoded_content_length} -lt 32 ]; then
@@ -52,6 +88,65 @@ validate_base64() {
         return 1
     fi
     return 0
+}
+
+read_config_value() {
+    local key_pattern="$1"
+    local target_file="$2"
+    local escaped_key=$(echo "$key_pattern" | sed 's/\./\\./g')
+    sed -n "s/^${escaped_key}=//p" "${target_file}" | head -n1
+}
+
+set_config_value() {
+    local key_pattern="$1"
+    local input_val="$2"
+    local target_file="$3"
+    local escaped_key=$(echo "$key_pattern" | sed 's/\./\\./g')
+    if grep -q "^${escaped_key}=" "${target_file}"; then
+        if sed -i.bak "s|^${escaped_key}=.*$|${key_pattern}=${input_val}|" "${target_file}" 2>/dev/null; then
+            rm -f "${target_file}.bak"
+        else
+            sed -i "" "s|^${escaped_key}=.*$|${key_pattern}=${input_val}|" "${target_file}"
+        fi
+    else
+        printf '\n%s=%s\n' "${key_pattern}" "${input_val}" >> "${target_file}"
+    fi
+}
+
+prompt_base64_config() {
+    local key_pattern="$1"
+    echo "The initial key used to generate JWT tokens (the original string must be over 32 characters and Base64 encoded)."
+    echo "用于密码生成JWT Token的初始密钥（原串长度32位以上做Base64格式化）。"
+    while true; do
+        printf "\`${key_pattern}\` is missing, please set with Base64 string: "
+        read input_val
+        if validate_base64 "${input_val}"; then
+            return
+        fi
+    done
+}
+
+process_compatible_base64_config() {
+    local canonical_key="$1"
+    local legacy_key="$2"
+    local target_file="$3"
+    local canonical_value=$(read_config_value "${canonical_key}" "${target_file}")
+    local legacy_value=$(read_config_value "${legacy_key}" "${target_file}")
+
+    if [ -n "${canonical_value}" ]; then
+        if [ -n "${legacy_value}" ]; then
+            echo "Both \`${canonical_key}\` and legacy \`${legacy_key}\` are configured; the preferred key wins."
+        fi
+        return
+    fi
+    if [ -n "${legacy_value}" ] && validate_base64 "${legacy_value}"; then
+        set_config_value "${canonical_key}" "${legacy_value}" "${target_file}"
+        echo "Migrated legacy \`${legacy_key}\` to preferred \`${canonical_key}\`."
+        return
+    fi
+    prompt_base64_config "${canonical_key}"
+    set_config_value "${canonical_key}" "${input_val}" "${target_file}"
+    echo "\`${canonical_key}\` updated."
 }
 
 process_required_config() {
@@ -67,14 +162,16 @@ process_required_config() {
             echo "The initial key used to generate JWT tokens (the original string must be over 32 characters and Base64 encoded)."
             echo "用于密码生成JWT Token的初始密钥（原串长度32位以上做Base64格式化）。"
         fi
-        read -p "${hint_message}" input_val
+        printf "%s" "${hint_message}"
+        read input_val
         inputCheckPass=1
         if [ "$isBase64" = "true" ]; then
             while [ $inputCheckPass -ne 0 ]; do
                 validate_base64 "${input_val}"
                 inputCheckPass=$?
                 if [ $inputCheckPass -ne 0 ]; then
-                  read -p "${hint_message}" input_val
+                  printf "%s" "${hint_message}"
+                  read input_val
                 fi
             done
         fi
@@ -162,18 +259,18 @@ export CUSTOM_SEARCH_LOCATIONS=file:${BASE_DIR}/conf/
 #===========================================================================================
 # Check and Init properties
 #===========================================================================================
-process_required_config "nacos.core.auth.plugin.nacos.token.secret.key" ${BASE_DIR}/conf/application.properties true
+process_compatible_base64_config "nacos.plugin.auth.nacos.token.secret.key" "nacos.core.auth.plugin.nacos.token.secret.key" ${BASE_DIR}/conf/application.properties
 process_required_config "nacos.core.auth.server.identity.key" ${BASE_DIR}/conf/application.properties
 process_required_config "nacos.core.auth.server.identity.value" ${BASE_DIR}/conf/application.properties
 
 #===========================================================================================
 # JVM Configuration
 #===========================================================================================
-if [[ "${MODE}" == "standalone" ]]; then
+if [ "${MODE}" = "standalone" ]; then
     JAVA_OPT="${JAVA_OPT} ${CUSTOM_NACOS_MEMORY:- -Xms512m -Xmx512m -Xmn256m}"
     JAVA_OPT="${JAVA_OPT} -Dnacos.standalone=true"
 else
-    if [[ "${EMBEDDED_STORAGE}" == "embedded" ]]; then
+    if [ "${EMBEDDED_STORAGE}" = "embedded" ]; then
         JAVA_OPT="${JAVA_OPT} -DembeddedStorage=true"
     fi
     JAVA_OPT="${JAVA_OPT} -server ${CUSTOM_NACOS_MEMORY:- -Xms2g -Xmx2g -Xmn1g -XX:MetaspaceSize=128m -XX:MaxMetaspaceSize=320m}"
@@ -181,16 +278,20 @@ else
     JAVA_OPT="${JAVA_OPT} -XX:-UseLargePages"
 fi
 
-if [[ "${FUNCTION_MODE}" == "config" ]]; then
+if [ "${FUNCTION_MODE}" = "config" ]; then
     JAVA_OPT="${JAVA_OPT} -Dnacos.functionMode=config"
-elif [[ "${FUNCTION_MODE}" == "naming" ]]; then
+elif [ "${FUNCTION_MODE}" = "naming" ]; then
     JAVA_OPT="${JAVA_OPT} -Dnacos.functionMode=naming"
+elif [ "${FUNCTION_MODE}" = "microservice" ]; then
+    JAVA_OPT="${JAVA_OPT} -Dnacos.functionMode=microservice"
+elif [ "${FUNCTION_MODE}" = "ai" ]; then
+    JAVA_OPT="${JAVA_OPT} -Dnacos.functionMode=ai"
 fi
 
 JAVA_OPT="${JAVA_OPT} -Dnacos.member.list=${MEMBER_LIST}"
 
 JAVA_MAJOR_VERSION=$($JAVA -version 2>&1 | sed -E -n 's/.* version "([0-9]*).*$/\1/p')
-if [[ "$JAVA_MAJOR_VERSION" -ge "9" ]] ; then
+if [ "$JAVA_MAJOR_VERSION" -ge "9" ] ; then
   JAVA_OPT="${JAVA_OPT} -Xlog:gc*:file=${BASE_DIR}/logs/nacos_gc.log:time,tags:filecount=10,filesize=100m"
   JAVA_OPT="${JAVA_OPT} --add-opens=java.base/java.lang=ALL-UNNAMED"
   JAVA_OPT="${JAVA_OPT} --add-opens=java.base/java.lang.reflect=ALL-UNNAMED"
@@ -216,7 +317,7 @@ fi
 
 echo "$JAVA $JAVA_OPT_EXT_FIX ${JAVA_OPT}"
 
-if [[ "${MODE}" == "standalone" ]]; then
+if [ "${MODE}" = "standalone" ]; then
     echo "nacos is starting with standalone"
 else
     echo "nacos is starting with cluster"
@@ -229,7 +330,9 @@ fi
 
 echo "$JAVA $JAVA_OPT_EXT_FIX ${JAVA_OPT}" > "$logfile"
 
-if [[ "$JAVA_OPT_EXT_FIX" == "" ]]; then
+configure_riscv64_libatomic
+
+if [ "$JAVA_OPT_EXT_FIX" = "" ]; then
   nohup "$JAVA" ${JAVA_OPT} nacos.nacos >> "$logfile" 2>&1 &
 else
   nohup "$JAVA" "$JAVA_OPT_EXT_FIX" ${JAVA_OPT} nacos.nacos >> "$logfile" 2>&1 &

@@ -42,25 +42,31 @@ public class NacosLogging {
     
     private NacosLoggingProperties loggingProperties;
     
+    private String lastLoadedConfigLocation;
+    
     private NacosLogging() {
         initLoggingAdapter();
     }
     
     private void initLoggingAdapter() {
         Class<? extends Logger> loggerClass = LOGGER.getClass();
-        for (NacosLoggingAdapterBuilder each : NacosServiceLoader.load(NacosLoggingAdapterBuilder.class)) {
+        for (NacosLoggingAdapterBuilder each : NacosServiceLoader
+            .load(NacosLoggingAdapterBuilder.class)) {
             LOGGER.info("Nacos Logging Adapter Builder: {}", each.getClass().getName());
             NacosLoggingAdapter tempLoggingAdapter = buildLoggingAdapterFromBuilder(each);
             if (isAdaptLogging(tempLoggingAdapter, loggerClass)) {
-                LOGGER.info("Nacos Logging Adapter: {} match {} success.", tempLoggingAdapter.getClass().getName(),
-                        loggerClass.getName());
-                loggingProperties = new NacosLoggingProperties(tempLoggingAdapter.getDefaultConfigLocation(),
+                LOGGER.info("Nacos Logging Adapter: {} match {} success.",
+                    tempLoggingAdapter.getClass().getName(),
+                    loggerClass.getName());
+                loggingProperties =
+                    new NacosLoggingProperties(tempLoggingAdapter.getDefaultConfigLocation(),
                         NacosClientProperties.PROTOTYPE.asProperties());
                 loggingAdapter = tempLoggingAdapter;
             }
         }
         if (null == loggingAdapter) {
-            LOGGER.warn("Nacos Logging don't find adapter, logging will print into application logs.");
+            LOGGER.warn(
+                "Nacos Logging don't find adapter, logging will print into application logs.");
             return;
         }
         scheduleReloadTask();
@@ -75,19 +81,30 @@ public class NacosLogging {
         }
     }
     
-    private boolean isAdaptLogging(NacosLoggingAdapter loggingAdapter, Class<? extends Logger> loggerClass) {
-        return null != loggingAdapter && loggingAdapter.isEnabled() && loggingAdapter.isAdaptedLogger(loggerClass);
+    private boolean isAdaptLogging(NacosLoggingAdapter loggingAdapter,
+        Class<? extends Logger> loggerClass) {
+        return null != loggingAdapter && loggingAdapter.isEnabled()
+            && loggingAdapter.isAdaptedLogger(loggerClass);
     }
     
     private void scheduleReloadTask() {
         ScheduledExecutorService reloadContextService = ExecutorFactory.Managed
-                .newSingleScheduledExecutorService("Nacos-Client",
-                        new NameThreadFactory("com.alibaba.nacos.client.logging"));
-        reloadContextService.scheduleAtFixedRate(() -> {
-            if (loggingAdapter.isNeedReloadConfiguration()) {
-                loggingAdapter.loadConfiguration(loggingProperties);
-            }
-        }, 0, loggingProperties.getReloadInternal(), TimeUnit.SECONDS);
+            .newSingleScheduledExecutorService("Nacos-Client",
+                new NameThreadFactory("com.alibaba.nacos.client.logging"));
+        reloadContextService.scheduleAtFixedRate(this::reloadConfigurationIfNeeded, 0,
+            loggingProperties.getReloadInternal(), TimeUnit.SECONDS);
+    }
+    
+    /**
+     * Reload the logging configuration when the adapter reports the config has changed.
+     *
+     * <p>All failures are handled inside {@link #loadConfiguration()}, so this task never throws and a faulty
+     * adapter can not cancel the periodic reload.
+     */
+    void reloadConfigurationIfNeeded() {
+        if (loggingAdapter.isNeedReloadConfiguration()) {
+            loadConfiguration();
+        }
     }
     
     private static class NacosLoggingInstance {
@@ -106,10 +123,21 @@ public class NacosLogging {
         try {
             if (null != loggingAdapter) {
                 loggingAdapter.loadConfiguration(loggingProperties);
+                logLoadedConfigLocation();
             }
         } catch (Throwable t) {
-            LOGGER.warn("Load {} Configuration of Nacos fail, message: {}", LOGGER.getClass().getName(),
-                    t.getMessage());
+            LOGGER.warn("Load {} Configuration of Nacos fail, message: {}",
+                LOGGER.getClass().getName(),
+                t.getMessage());
         }
+    }
+    
+    private void logLoadedConfigLocation() {
+        String configLocation = loggingProperties.getLocation();
+        if (null == configLocation || configLocation.equals(lastLoadedConfigLocation)) {
+            return;
+        }
+        lastLoadedConfigLocation = configLocation;
+        LOGGER.info("Nacos client logging configuration loaded from: {}", configLocation);
     }
 }

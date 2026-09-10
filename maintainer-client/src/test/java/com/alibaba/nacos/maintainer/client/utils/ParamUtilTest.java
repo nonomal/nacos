@@ -18,6 +18,9 @@
 
 package com.alibaba.nacos.maintainer.client.utils;
 
+import com.alibaba.nacos.api.selector.AbstractSelector;
+import com.alibaba.nacos.api.selector.ExpressionSelector;
+import com.alibaba.nacos.api.utils.json.JsonUtils;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -26,7 +29,9 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ParamUtilTest {
     
@@ -46,6 +51,8 @@ class ParamUtilTest {
         ParamUtil.setReadTimeout(defaultReadTimeout);
         System.clearProperty("MAINTAINER.CLIENT.CONNECT.TIMEOUT");
         System.clearProperty("MAINTAINER.CLIENT.READ.TIMEOUT");
+        System.clearProperty("MAINTAINER.CLIENT.MAX.RETRY.TIMES");
+        System.clearProperty("MAINTAINER.CLIENT.REFRESH.INTERVAL.MILLS");
     }
     
     @Test
@@ -69,58 +76,91 @@ class ParamUtilTest {
     }
     
     @Test
+    void testDefaultValues() {
+        assertEquals(3, ParamUtil.getMaxRetryTimes());
+        assertEquals("public", ParamUtil.getDefaultNamespaceId());
+        assertEquals("DEFAULT_GROUP", ParamUtil.getDefaultGroupName());
+        assertEquals(5000, ParamUtil.getRefreshIntervalMills());
+        assertNotNull(new ParamUtil());
+    }
+    
+    @Test
     void testInitConnectionTimeoutWithException() throws Throwable {
-        assertThrows(IllegalArgumentException.class, () -> {
+        String invalidValue = "abc";
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> {
             Method method = ParamUtil.class.getDeclaredMethod("initConnectionTimeout");
             method.setAccessible(true);
-            System.setProperty("MAINTAINER.CLIENT.CONNECT.TIMEOUT", "test");
+            System.setProperty("MAINTAINER.CLIENT.CONNECT.TIMEOUT", invalidValue);
             try {
                 method.invoke(null);
             } catch (InvocationTargetException e) {
                 throw e.getCause();
             }
         });
+        assertTrue(exception.getMessage().contains(invalidValue),
+            "Exception message should contain the invalid input value");
     }
     
     @Test
     void testInitReadTimeoutWithException() throws Throwable {
-        assertThrows(IllegalArgumentException.class, () -> {
+        String invalidValue = "xyz";
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> {
             Method method = ParamUtil.class.getDeclaredMethod("initReadTimeout");
             method.setAccessible(true);
-            System.setProperty("MAINTAINER.CLIENT.READ.TIMEOUT", "test");
+            System.setProperty("MAINTAINER.CLIENT.READ.TIMEOUT", invalidValue);
             try {
                 method.invoke(null);
             } catch (InvocationTargetException e) {
                 throw e.getCause();
             }
         });
+        assertTrue(exception.getMessage().contains(invalidValue),
+            "Exception message should contain the invalid input value");
     }
     
     @Test
     void testInitMaxRetryTimesWithException() throws Throwable {
-        assertThrows(IllegalArgumentException.class, () -> {
+        String invalidValue = "not_a_number";
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> {
             Method method = ParamUtil.class.getDeclaredMethod("initMaxRetryTimes");
             method.setAccessible(true);
-            System.setProperty("MAINTAINER.CLIENT.MAX.RETRY.TIMES", "test");
+            System.setProperty("MAINTAINER.CLIENT.MAX.RETRY.TIMES", invalidValue);
             try {
                 method.invoke(null);
             } catch (InvocationTargetException e) {
                 throw e.getCause();
             }
         });
+        assertTrue(exception.getMessage().contains(invalidValue),
+            "Exception message should contain the invalid input value");
     }
     
     @Test
     void testInitRefreshIntervalMillsWithException() throws Throwable {
-        assertThrows(IllegalArgumentException.class, () -> {
+        String invalidValue = "invalid_mills";
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> {
             Method method = ParamUtil.class.getDeclaredMethod("initRefreshIntervalMills");
             method.setAccessible(true);
-            System.setProperty("MAINTAINER.CLIENT.REFRESH.INTERVAL.MILLS", "test");
+            System.setProperty("MAINTAINER.CLIENT.REFRESH.INTERVAL.MILLS", invalidValue);
             try {
                 method.invoke(null);
             } catch (InvocationTargetException e) {
                 throw e.getCause();
             }
         });
+        assertTrue(exception.getMessage().contains(invalidValue),
+            "Exception message should contain the invalid input value");
+    }
+    
+    @Test
+    void testInitSerializationRegistersSelectorSubtypes() {
+        ParamUtil.initSerialization();
+        
+        AbstractSelector selector =
+            JsonUtils.toObj("{\"type\":\"LabelSelector\",\"expression\":\"k=v\"}",
+                AbstractSelector.class);
+        
+        assertEquals(ExpressionSelector.class, selector.getClass());
+        assertEquals("k=v", ((ExpressionSelector) selector).getExpression());
     }
 }

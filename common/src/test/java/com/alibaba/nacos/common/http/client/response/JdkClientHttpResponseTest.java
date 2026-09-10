@@ -75,12 +75,6 @@ class JdkClientHttpResponseTest {
     }
     
     @Test
-    void testGetStatusText() throws IOException {
-        when(connection.getResponseMessage()).thenReturn("test");
-        assertEquals("test", clientHttpResponse.getStatusText());
-    }
-    
-    @Test
     void testGetHeaders() {
         assertEquals(3, clientHttpResponse.getHeaders().getHeader().size());
         assertEquals("testValue", clientHttpResponse.getHeaders().getValue("testName"));
@@ -98,6 +92,7 @@ class JdkClientHttpResponseTest {
         ByteArrayInputStream byteArrayInputStream = new ByteArrayInputStream(testCase);
         when(connection.getInputStream()).thenReturn(byteArrayInputStream);
         headers.put(HttpHeaderConsts.CONTENT_ENCODING, Collections.singletonList("gzip"));
-        assertEquals("test", IoUtils.toString(clientHttpResponse.getBody(), StandardCharsets.UTF_8.name()));
+        assertEquals("test",
+            IoUtils.toString(clientHttpResponse.getBody(), StandardCharsets.UTF_8.name()));
     }
 }

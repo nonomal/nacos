@@ -27,6 +27,7 @@ import com.alibaba.nacos.api.config.model.ConfigListenerInfo;
 import com.alibaba.nacos.api.config.model.SameConfigPolicy;
 import com.alibaba.nacos.api.exception.NacosException;
 import com.alibaba.nacos.api.model.Page;
+import com.alibaba.nacos.api.model.v2.ErrorCode;
 import com.alibaba.nacos.api.model.v2.Result;
 import com.alibaba.nacos.common.http.HttpRestResult;
 import com.alibaba.nacos.common.utils.JacksonUtils;
@@ -37,6 +38,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -48,6 +50,7 @@ import java.util.Map;
 import java.util.Properties;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -69,7 +72,8 @@ class NacosConfigMaintainerServiceImplTest {
         Properties properties = new Properties();
         properties.setProperty("serverAddr", "localhost:8848");
         nacosConfigMaintainerServiceImpl = new NacosConfigMaintainerServiceImpl(properties);
-        Field clientHttpProxyField = AbstractCoreMaintainerService.class.getDeclaredField("clientHttpProxy");
+        Field clientHttpProxyField =
+            AbstractCoreMaintainerService.class.getDeclaredField("clientHttpProxy");
         clientHttpProxyField.setAccessible(true);
         clientHttpProxyField.set(nacosConfigMaintainerServiceImpl, clientHttpProxy);
     }
@@ -86,7 +90,8 @@ class NacosConfigMaintainerServiceImplTest {
         HttpRestResult<String> mockHttpRestResult = new HttpRestResult<>();
         mockHttpRestResult.setData(JacksonUtils.toJson(new Result<>(expectedConfig)));
         
-        when(clientHttpProxy.executeSyncHttpRequest(any(HttpRequest.class))).thenReturn(mockHttpRestResult);
+        when(clientHttpProxy.executeSyncHttpRequest(any(HttpRequest.class)))
+            .thenReturn(mockHttpRestResult);
         
         // Act
         ConfigDetailInfo result = nacosConfigMaintainerServiceImpl.getConfig(dataId);
@@ -108,12 +113,111 @@ class NacosConfigMaintainerServiceImplTest {
         HttpRestResult<String> mockHttpRestResult = new HttpRestResult<>();
         mockHttpRestResult.setData(JacksonUtils.toJson(new Result<>(true)));
         
-        when(clientHttpProxy.executeSyncHttpRequest(any(HttpRequest.class))).thenReturn(mockHttpRestResult);
+        when(clientHttpProxy.executeSyncHttpRequest(any(HttpRequest.class)))
+            .thenReturn(mockHttpRestResult);
         
         // Act
         boolean result = nacosConfigMaintainerServiceImpl.publishConfig(dataId, content);
         
         // Assert
+        assertTrue(result);
+        verify(clientHttpProxy, times(1)).executeSyncHttpRequest(any(HttpRequest.class));
+    }
+    
+    @Test
+    void testPublishConfigWithFalseResult() throws Exception {
+        String dataId = "testDataId";
+        String content = "testContent";
+        
+        HttpRestResult<String> mockHttpRestResult = new HttpRestResult<>();
+        mockHttpRestResult.setData(JacksonUtils.toJson(new Result<>(false)));
+        
+        when(clientHttpProxy.executeSyncHttpRequest(any(HttpRequest.class)))
+            .thenReturn(mockHttpRestResult);
+        
+        boolean result = nacosConfigMaintainerServiceImpl.publishConfig(dataId, content);
+        
+        assertFalse(result);
+        verify(clientHttpProxy, times(1)).executeSyncHttpRequest(any(HttpRequest.class));
+    }
+    
+    @Test
+    void testPublishConfigWithFailureResult() throws Exception {
+        HttpRestResult<String> mockHttpRestResult = new HttpRestResult<>();
+        mockHttpRestResult.setData(JacksonUtils.toJson(Result.failure(ErrorCode.SERVER_ERROR)));
+        
+        when(clientHttpProxy.executeSyncHttpRequest(any(HttpRequest.class)))
+            .thenReturn(mockHttpRestResult);
+        
+        NacosException exception = assertThrows(NacosException.class,
+            () -> nacosConfigMaintainerServiceImpl.publishConfig("testDataId", "testContent"));
+        
+        assertEquals(NacosException.SERVER_ERROR, exception.getErrCode());
+        assertEquals(ErrorCode.SERVER_ERROR.getMsg(), exception.getErrMsg());
+        verify(clientHttpProxy, times(1)).executeSyncHttpRequest(any(HttpRequest.class));
+    }
+    
+    @Test
+    void testPublishConfigWithFailureResultWithoutMessage() throws Exception {
+        HttpRestResult<String> mockHttpRestResult = new HttpRestResult<>();
+        mockHttpRestResult.setData(JacksonUtils.toJson(
+            new Result<Boolean>(ErrorCode.SERVER_ERROR.getCode(), "")));
+        
+        when(clientHttpProxy.executeSyncHttpRequest(any(HttpRequest.class)))
+            .thenReturn(mockHttpRestResult);
+        
+        NacosException exception = assertThrows(NacosException.class,
+            () -> nacosConfigMaintainerServiceImpl.publishConfig("testDataId", "testContent"));
+        
+        assertEquals(NacosException.SERVER_ERROR, exception.getErrCode());
+        assertEquals("request failed", exception.getErrMsg());
+        verify(clientHttpProxy, times(1)).executeSyncHttpRequest(any(HttpRequest.class));
+    }
+    
+    @Test
+    void testPublishConfigWithEmptyResult() throws Exception {
+        HttpRestResult<String> mockHttpRestResult = new HttpRestResult<>();
+        mockHttpRestResult.setData("null");
+        
+        when(clientHttpProxy.executeSyncHttpRequest(any(HttpRequest.class)))
+            .thenReturn(mockHttpRestResult);
+        
+        NacosException exception = assertThrows(NacosException.class,
+            () -> nacosConfigMaintainerServiceImpl.publishConfig("testDataId", "testContent"));
+        
+        assertEquals(NacosException.SERVER_ERROR, exception.getErrCode());
+        assertEquals("empty Result", exception.getErrMsg());
+        verify(clientHttpProxy, times(1)).executeSyncHttpRequest(any(HttpRequest.class));
+    }
+    
+    @Test
+    void testPublishConfigWithEmptyBooleanData() throws Exception {
+        HttpRestResult<String> mockHttpRestResult = new HttpRestResult<>();
+        mockHttpRestResult.setData(JacksonUtils.toJson(
+            new Result<Boolean>(ErrorCode.SUCCESS.getCode(), ErrorCode.SUCCESS.getMsg())));
+        
+        when(clientHttpProxy.executeSyncHttpRequest(any(HttpRequest.class)))
+            .thenReturn(mockHttpRestResult);
+        
+        NacosException exception = assertThrows(NacosException.class,
+            () -> nacosConfigMaintainerServiceImpl.publishConfig("testDataId", "testContent"));
+        
+        assertEquals(NacosException.SERVER_ERROR, exception.getErrCode());
+        assertEquals("empty boolean result data", exception.getErrMsg());
+        verify(clientHttpProxy, times(1)).executeSyncHttpRequest(any(HttpRequest.class));
+    }
+    
+    @Test
+    void testUpdateConfigMetadata() throws Exception {
+        HttpRestResult<String> mockHttpRestResult = new HttpRestResult<>();
+        mockHttpRestResult.setData(JacksonUtils.toJson(new Result<>(true)));
+        when(clientHttpProxy.executeSyncHttpRequest(any(HttpRequest.class)))
+            .thenReturn(mockHttpRestResult);
+        
+        boolean result =
+            nacosConfigMaintainerServiceImpl.updateConfigMetadata("testDataId",
+                Constants.DEFAULT_GROUP, Constants.DEFAULT_NAMESPACE_ID, "description", "tag");
+        
         assertTrue(result);
         verify(clientHttpProxy, times(1)).executeSyncHttpRequest(any(HttpRequest.class));
     }
@@ -126,10 +230,12 @@ class NacosConfigMaintainerServiceImplTest {
         HttpRestResult<String> mockHttpRestResult = new HttpRestResult<>();
         mockHttpRestResult.setData(JacksonUtils.toJson(new Result<>(true)));
         
-        when(clientHttpProxy.executeSyncHttpRequest(any(HttpRequest.class))).thenReturn(mockHttpRestResult);
+        when(clientHttpProxy.executeSyncHttpRequest(any(HttpRequest.class)))
+            .thenReturn(mockHttpRestResult);
         
         // Act
-        boolean result = nacosConfigMaintainerServiceImpl.publishBetaConfig(dataId, Constants.DEFAULT_GROUP,
+        boolean result =
+            nacosConfigMaintainerServiceImpl.publishBetaConfig(dataId, Constants.DEFAULT_GROUP,
                 Constants.DEFAULT_NAMESPACE_ID, content, null, null, null, null, null, betaIps);
         
         // Assert
@@ -142,9 +248,10 @@ class NacosConfigMaintainerServiceImplTest {
         String dataId = "testDataId";
         String content = "testContent";
         assertThrows(NacosException.class,
-                () -> nacosConfigMaintainerServiceImpl.publishBetaConfig(dataId, Constants.DEFAULT_GROUP,
-                        Constants.DEFAULT_NAMESPACE_ID, content, null, null, null, null, null, ""),
-                "betaIps is empty, not publish beta configuration, please use `publishConfig` directly");
+            () -> nacosConfigMaintainerServiceImpl.publishBetaConfig(dataId,
+                Constants.DEFAULT_GROUP,
+                Constants.DEFAULT_NAMESPACE_ID, content, null, null, null, null, null, ""),
+            "betaIps is empty, not publish beta configuration, please use `publishConfig` directly");
     }
     
     @Test
@@ -155,7 +262,8 @@ class NacosConfigMaintainerServiceImplTest {
         HttpRestResult<String> mockHttpRestResult = new HttpRestResult<>();
         mockHttpRestResult.setData(JacksonUtils.toJson(new Result<>(true)));
         
-        when(clientHttpProxy.executeSyncHttpRequest(any(HttpRequest.class))).thenReturn(mockHttpRestResult);
+        when(clientHttpProxy.executeSyncHttpRequest(any(HttpRequest.class)))
+            .thenReturn(mockHttpRestResult);
         
         // Act
         boolean result = nacosConfigMaintainerServiceImpl.deleteConfig(dataId);
@@ -170,15 +278,40 @@ class NacosConfigMaintainerServiceImplTest {
         List<Long> ids = new ArrayList<>();
         ids.add(1L);
         ids.add(2L);
+        ArgumentCaptor<HttpRequest> requestCaptor = ArgumentCaptor.forClass(HttpRequest.class);
         HttpRestResult<String> mockHttpRestResult = new HttpRestResult<>();
         mockHttpRestResult.setData(JacksonUtils.toJson(new Result<>(true)));
         
-        when(clientHttpProxy.executeSyncHttpRequest(any(HttpRequest.class))).thenReturn(mockHttpRestResult);
+        when(clientHttpProxy.executeSyncHttpRequest(any(HttpRequest.class)))
+            .thenReturn(mockHttpRestResult);
         
         boolean result = nacosConfigMaintainerServiceImpl.deleteConfigs(ids);
         
         assertTrue(result);
-        verify(clientHttpProxy, times(1)).executeSyncHttpRequest(any(HttpRequest.class));
+        verify(clientHttpProxy, times(1)).executeSyncHttpRequest(requestCaptor.capture());
+        assertEquals("1,2", requestCaptor.getValue().getParamValues().get("ids"));
+        assertEquals(Constants.DEFAULT_NAMESPACE_ID,
+            requestCaptor.getValue().getParamValues().get("namespaceId"));
+    }
+    
+    @Test
+    void testDeleteConfigsWithNamespaceId() throws Exception {
+        List<Long> ids = new ArrayList<>();
+        ids.add(1L);
+        ids.add(2L);
+        ArgumentCaptor<HttpRequest> requestCaptor = ArgumentCaptor.forClass(HttpRequest.class);
+        HttpRestResult<String> mockHttpRestResult = new HttpRestResult<>();
+        mockHttpRestResult.setData(JacksonUtils.toJson(new Result<>(true)));
+        
+        when(clientHttpProxy.executeSyncHttpRequest(any(HttpRequest.class)))
+            .thenReturn(mockHttpRestResult);
+        
+        boolean result = nacosConfigMaintainerServiceImpl.deleteConfigs(ids, "namespaceId");
+        
+        assertTrue(result);
+        verify(clientHttpProxy, times(1)).executeSyncHttpRequest(requestCaptor.capture());
+        assertEquals("1,2", requestCaptor.getValue().getParamValues().get("ids"));
+        assertEquals("namespaceId", requestCaptor.getValue().getParamValues().get("namespaceId"));
     }
     
     @Test
@@ -195,7 +328,8 @@ class NacosConfigMaintainerServiceImplTest {
         HttpRestResult<String> mockHttpRestResult = new HttpRestResult<>();
         mockHttpRestResult.setData(JacksonUtils.toJson(new Result<>(expectedPage)));
         
-        when(clientHttpProxy.executeSyncHttpRequest(any(HttpRequest.class))).thenReturn(mockHttpRestResult);
+        when(clientHttpProxy.executeSyncHttpRequest(any(HttpRequest.class)))
+            .thenReturn(mockHttpRestResult);
         
         // Act
         Page<ConfigBasicInfo> result = nacosConfigMaintainerServiceImpl.listConfigs(namespaceId);
@@ -223,10 +357,12 @@ class NacosConfigMaintainerServiceImplTest {
         HttpRestResult<String> mockHttpRestResult = new HttpRestResult<>();
         mockHttpRestResult.setData(JacksonUtils.toJson(new Result<>(expectedPage)));
         
-        when(clientHttpProxy.executeSyncHttpRequest(any(HttpRequest.class))).thenReturn(mockHttpRestResult);
+        when(clientHttpProxy.executeSyncHttpRequest(any(HttpRequest.class)))
+            .thenReturn(mockHttpRestResult);
         
         // Act
-        Page<ConfigBasicInfo> result = nacosConfigMaintainerServiceImpl.searchConfigs(dataId, groupName, namespaceId);
+        Page<ConfigBasicInfo> result =
+            nacosConfigMaintainerServiceImpl.searchConfigs(dataId, groupName, namespaceId);
         
         // Assert
         assertNotNull(result);
@@ -253,10 +389,12 @@ class NacosConfigMaintainerServiceImplTest {
         HttpRestResult<String> mockHttpRestResult = new HttpRestResult<>();
         mockHttpRestResult.setData(JacksonUtils.toJson(new Result<>(expectedPage)));
         
-        when(clientHttpProxy.executeSyncHttpRequest(any(HttpRequest.class))).thenReturn(mockHttpRestResult);
+        when(clientHttpProxy.executeSyncHttpRequest(any(HttpRequest.class)))
+            .thenReturn(mockHttpRestResult);
         
         // Act
-        Page<ConfigBasicInfo> result = nacosConfigMaintainerServiceImpl.searchConfigByDetails(dataId, groupName,
+        Page<ConfigBasicInfo> result =
+            nacosConfigMaintainerServiceImpl.searchConfigByDetails(dataId, groupName,
                 namespaceId, configDetail, search, "", "", "", pageNo, pageSize);
         
         // Assert
@@ -279,10 +417,12 @@ class NacosConfigMaintainerServiceImplTest {
         HttpRestResult<String> mockHttpRestResult = new HttpRestResult<>();
         mockHttpRestResult.setData(JacksonUtils.toJson(new Result<>(expectedStatus)));
         
-        when(clientHttpProxy.executeSyncHttpRequest(any(HttpRequest.class))).thenReturn(mockHttpRestResult);
+        when(clientHttpProxy.executeSyncHttpRequest(any(HttpRequest.class)))
+            .thenReturn(mockHttpRestResult);
         
         // Act
-        ConfigListenerInfo result = nacosConfigMaintainerServiceImpl.getListeners(dataId, groupName);
+        ConfigListenerInfo result =
+            nacosConfigMaintainerServiceImpl.getListeners(dataId, groupName);
         
         // Assert
         assertNotNull(result);
@@ -300,7 +440,8 @@ class NacosConfigMaintainerServiceImplTest {
         HttpRestResult<String> mockHttpRestResult = new HttpRestResult<>();
         mockHttpRestResult.setData(JacksonUtils.toJson(new Result<>(true)));
         
-        when(clientHttpProxy.executeSyncHttpRequest(any(HttpRequest.class))).thenReturn(mockHttpRestResult);
+        when(clientHttpProxy.executeSyncHttpRequest(any(HttpRequest.class)))
+            .thenReturn(mockHttpRestResult);
         
         // Act
         boolean result = nacosConfigMaintainerServiceImpl.stopBeta(dataId, groupName);
@@ -323,7 +464,8 @@ class NacosConfigMaintainerServiceImplTest {
         HttpRestResult<String> mockHttpRestResult = new HttpRestResult<>();
         mockHttpRestResult.setData(JacksonUtils.toJson(new Result<>(expectedConfig)));
         
-        when(clientHttpProxy.executeSyncHttpRequest(any(HttpRequest.class))).thenReturn(mockHttpRestResult);
+        when(clientHttpProxy.executeSyncHttpRequest(any(HttpRequest.class)))
+            .thenReturn(mockHttpRestResult);
         
         // Act
         ConfigGrayInfo result = nacosConfigMaintainerServiceImpl.queryBeta(dataId, groupName);
@@ -349,16 +491,52 @@ class NacosConfigMaintainerServiceImplTest {
         HttpRestResult<String> mockHttpRestResult = new HttpRestResult<>();
         mockHttpRestResult.setData(JacksonUtils.toJson(new Result<>(expectedResult)));
         
-        when(clientHttpProxy.executeSyncHttpRequest(any(HttpRequest.class))).thenReturn(mockHttpRestResult);
+        when(clientHttpProxy.executeSyncHttpRequest(any(HttpRequest.class)))
+            .thenReturn(mockHttpRestResult);
         
         // Act
-        Map<String, Object> result = nacosConfigMaintainerServiceImpl.cloneConfig(namespaceId, configBeansList, srcUser,
+        Map<String, Object> result =
+            nacosConfigMaintainerServiceImpl.cloneConfig(namespaceId, configBeansList, srcUser,
                 policy);
         
         // Assert
         assertNotNull(result);
         assertTrue((Boolean) result.get("success"));
-        verify(clientHttpProxy, times(1)).executeSyncHttpRequest(any(HttpRequest.class));
+        ArgumentCaptor<HttpRequest> requestCaptor = ArgumentCaptor.forClass(HttpRequest.class);
+        verify(clientHttpProxy, times(1)).executeSyncHttpRequest(requestCaptor.capture());
+        Map<String, String> params = requestCaptor.getValue().getParamValues();
+        assertEquals(namespaceId, params.get("namespaceId"));
+        assertEquals(namespaceId, params.get("sourceNamespaceId"));
+    }
+    
+    @Test
+    void testCloneConfigWithSourceAndTargetNamespace() throws Exception {
+        final String sourceNamespaceId = "sourceNamespace";
+        final String targetNamespaceId = "targetNamespace";
+        final List<ConfigCloneInfo> configBeansList = new ArrayList<>();
+        final String srcUser = "testUser";
+        final SameConfigPolicy policy = SameConfigPolicy.ABORT;
+        
+        Map<String, Object> expectedResult = new HashMap<>();
+        expectedResult.put("success", true);
+        
+        HttpRestResult<String> mockHttpRestResult = new HttpRestResult<>();
+        mockHttpRestResult.setData(JacksonUtils.toJson(new Result<>(expectedResult)));
+        
+        when(clientHttpProxy.executeSyncHttpRequest(any(HttpRequest.class)))
+            .thenReturn(mockHttpRestResult);
+        
+        Map<String, Object> result =
+            nacosConfigMaintainerServiceImpl.cloneConfig(sourceNamespaceId, targetNamespaceId,
+                configBeansList, srcUser, policy);
+        
+        assertNotNull(result);
+        assertTrue((Boolean) result.get("success"));
+        ArgumentCaptor<HttpRequest> requestCaptor = ArgumentCaptor.forClass(HttpRequest.class);
+        verify(clientHttpProxy, times(1)).executeSyncHttpRequest(requestCaptor.capture());
+        Map<String, String> params = requestCaptor.getValue().getParamValues();
+        assertEquals(targetNamespaceId, params.get("namespaceId"));
+        assertEquals(sourceNamespaceId, params.get("sourceNamespaceId"));
     }
     
     @Test
@@ -372,12 +550,14 @@ class NacosConfigMaintainerServiceImplTest {
         
         Page<ConfigHistoryBasicInfo> expectedPage = new Page<>();
         HttpRestResult<String> mockHttpRestResult = new HttpRestResult<>();
-        mockHttpRestResult.setData(new ObjectMapper().writeValueAsString(new Result<>(expectedPage)));
+        mockHttpRestResult
+            .setData(new ObjectMapper().writeValueAsString(new Result<>(expectedPage)));
         
         when(clientHttpProxy.executeSyncHttpRequest(any())).thenReturn(mockHttpRestResult);
         
         // Act
-        Page<ConfigHistoryBasicInfo> result = nacosConfigMaintainerServiceImpl.listConfigHistory(dataId, groupName,
+        Page<ConfigHistoryBasicInfo> result =
+            nacosConfigMaintainerServiceImpl.listConfigHistory(dataId, groupName,
                 namespaceId, pageNo, pageSize);
         
         // Assert
@@ -397,12 +577,14 @@ class NacosConfigMaintainerServiceImplTest {
         expectedConfig.setCreateTime(System.currentTimeMillis());
         expectedConfig.setModifyTime(System.currentTimeMillis());
         HttpRestResult<String> mockHttpRestResult = new HttpRestResult<>();
-        mockHttpRestResult.setData(new ObjectMapper().writeValueAsString(new Result<>(expectedConfig)));
+        mockHttpRestResult
+            .setData(new ObjectMapper().writeValueAsString(new Result<>(expectedConfig)));
         
         when(clientHttpProxy.executeSyncHttpRequest(any())).thenReturn(mockHttpRestResult);
         
         // Act
-        ConfigHistoryDetailInfo result = nacosConfigMaintainerServiceImpl.getConfigHistoryInfo(dataId, groupName,
+        ConfigHistoryDetailInfo result =
+            nacosConfigMaintainerServiceImpl.getConfigHistoryInfo(dataId, groupName,
                 namespaceId, nid);
         
         // Assert
@@ -422,12 +604,14 @@ class NacosConfigMaintainerServiceImplTest {
         expectedConfig.setCreateTime(System.currentTimeMillis());
         expectedConfig.setModifyTime(System.currentTimeMillis());
         HttpRestResult<String> mockHttpRestResult = new HttpRestResult<>();
-        mockHttpRestResult.setData(new ObjectMapper().writeValueAsString(new Result<>(expectedConfig)));
+        mockHttpRestResult
+            .setData(new ObjectMapper().writeValueAsString(new Result<>(expectedConfig)));
         
         when(clientHttpProxy.executeSyncHttpRequest(any())).thenReturn(mockHttpRestResult);
         
         // Act
-        ConfigHistoryDetailInfo result = nacosConfigMaintainerServiceImpl.getPreviousConfigHistoryInfo(dataId,
+        ConfigHistoryDetailInfo result =
+            nacosConfigMaintainerServiceImpl.getPreviousConfigHistoryInfo(dataId,
                 groupName, namespaceId, id);
         
         // Assert
@@ -442,12 +626,14 @@ class NacosConfigMaintainerServiceImplTest {
         
         List<ConfigBasicInfo> expectedList = new ArrayList<>();
         HttpRestResult<String> mockHttpRestResult = new HttpRestResult<>();
-        mockHttpRestResult.setData(new ObjectMapper().writeValueAsString(new Result<>(expectedList)));
+        mockHttpRestResult
+            .setData(new ObjectMapper().writeValueAsString(new Result<>(expectedList)));
         
         when(clientHttpProxy.executeSyncHttpRequest(any())).thenReturn(mockHttpRestResult);
         
         // Act
-        List<ConfigBasicInfo> result = nacosConfigMaintainerServiceImpl.getConfigListByNamespace(namespaceId);
+        List<ConfigBasicInfo> result =
+            nacosConfigMaintainerServiceImpl.getConfigListByNamespace(namespaceId);
         
         // Assert
         assertNotNull(result);
@@ -495,7 +681,8 @@ class NacosConfigMaintainerServiceImplTest {
         ConfigListenerInfo expectedStatus = new ConfigListenerInfo();
         HttpRestResult<String> mockHttpRestResult = new HttpRestResult<>();
         expectedStatus.setQueryType(ConfigListenerInfo.QUERY_TYPE_IP);
-        mockHttpRestResult.setData(new ObjectMapper().writeValueAsString(new Result<>(expectedStatus)));
+        mockHttpRestResult
+            .setData(new ObjectMapper().writeValueAsString(new Result<>(expectedStatus)));
         when(clientHttpProxy.executeSyncHttpRequest(any())).thenReturn(mockHttpRestResult);
         // Arrange
         String ip = "127.0.0.1";
@@ -503,7 +690,8 @@ class NacosConfigMaintainerServiceImplTest {
         String namespaceId = "testNamespace";
         
         // Act
-        ConfigListenerInfo result = nacosConfigMaintainerServiceImpl.getAllSubClientConfigByIp(ip, all, namespaceId,
+        ConfigListenerInfo result =
+            nacosConfigMaintainerServiceImpl.getAllSubClientConfigByIp(ip, all, namespaceId,
                 true);
         
         // Assert

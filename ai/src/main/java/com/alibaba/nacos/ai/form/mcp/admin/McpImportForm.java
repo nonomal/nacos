@@ -28,7 +28,10 @@ import java.io.Serial;
  * Nacos AI MCP Server import request form.
  *
  * @author WangzJi
+ * @deprecated migrate to the unified AI resource import request contract. Planned for removal in
+ *     Nacos 3.4.0.
  */
+@Deprecated
 public class McpImportForm extends McpForm {
     
     @Serial
@@ -70,15 +73,16 @@ public class McpImportForm extends McpForm {
         fillDefaultValue();
         if (StringUtils.isEmpty(importType)) {
             throw new NacosApiException(NacosException.INVALID_PARAM, ErrorCode.PARAMETER_MISSING,
-                    "Required parameter 'importType' is not present");
+                "Required parameter 'importType' is not present");
         }
         if (StringUtils.isEmpty(data)) {
             throw new NacosApiException(NacosException.INVALID_PARAM, ErrorCode.PARAMETER_MISSING,
-                    "Required parameter 'data' is not present");
+                "Required parameter 'data' is not present");
         }
         if (ExternalDataTypeEnum.parseType(importType) == null) {
-            throw new NacosApiException(NacosException.INVALID_PARAM, ErrorCode.PARAMETER_VALIDATE_ERROR,
-                    "importType must be one of: json, url, file");
+            throw new NacosApiException(NacosException.INVALID_PARAM,
+                ErrorCode.PARAMETER_VALIDATE_ERROR,
+                "importType must be one of: json, url, file");
         }
     }
     

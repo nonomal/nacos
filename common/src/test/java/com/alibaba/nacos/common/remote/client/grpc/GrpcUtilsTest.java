@@ -31,6 +31,7 @@ import org.junit.jupiter.api.Test;
 import java.util.HashMap;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -51,6 +52,7 @@ class GrpcUtilsTest {
     private ClientConfigMetricResponse createResponse() {
         ClientConfigMetricResponse clientConfigMetricResponse = new ClientConfigMetricResponse();
         clientConfigMetricResponse.setMetrics(new HashMap<String, Object>() {
+            
             {
                 put("m1", "v1");
                 put("m2", "v2");
@@ -71,6 +73,11 @@ class GrpcUtilsTest {
         request.putHeader("h2", "v2");
         request.putHeader("h3", "v3");
         return request;
+    }
+    
+    @Test
+    void testConstructor() {
+        assertNotNull(new GrpcUtils());
     }
     
     @Test
@@ -109,7 +116,8 @@ class GrpcUtilsTest {
         assertEquals(this.request.getNamespace(), request.getNamespace());
         
         Payload responsePayload = GrpcUtils.convert(response);
-        ClientConfigMetricResponse response = (ClientConfigMetricResponse) GrpcUtils.parse(responsePayload);
+        ClientConfigMetricResponse response =
+            (ClientConfigMetricResponse) GrpcUtils.parse(responsePayload);
         assertEquals(this.response.getMetrics(), response.getMetrics());
         
     }

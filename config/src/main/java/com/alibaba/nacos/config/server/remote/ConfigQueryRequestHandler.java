@@ -16,6 +16,7 @@
 
 package com.alibaba.nacos.config.server.remote;
 
+import com.alibaba.nacos.api.annotation.Since;
 import com.alibaba.nacos.api.config.remote.request.ConfigQueryRequest;
 import com.alibaba.nacos.api.config.remote.response.ConfigQueryResponse;
 import com.alibaba.nacos.api.exception.NacosException;
@@ -23,6 +24,7 @@ import com.alibaba.nacos.api.remote.request.RequestMeta;
 import com.alibaba.nacos.api.remote.response.ResponseCode;
 import com.alibaba.nacos.auth.annotation.Secured;
 import com.alibaba.nacos.common.utils.NamespaceUtil;
+import com.alibaba.nacos.common.utils.StringUtils;
 import com.alibaba.nacos.config.server.model.ConfigCacheGray;
 import com.alibaba.nacos.config.server.model.gray.BetaGrayRule;
 import com.alibaba.nacos.config.server.model.gray.TagGrayRule;
@@ -33,6 +35,7 @@ import com.alibaba.nacos.config.server.service.query.model.ConfigQueryChainRespo
 import com.alibaba.nacos.config.server.service.trace.ConfigTraceService;
 import com.alibaba.nacos.config.server.utils.GroupKey2;
 import com.alibaba.nacos.config.server.utils.LogUtil;
+import com.alibaba.nacos.config.server.utils.ParamUtils;
 import com.alibaba.nacos.config.server.utils.TimeUtils;
 import com.alibaba.nacos.core.control.TpsControl;
 import com.alibaba.nacos.core.namespace.filter.NamespaceValidation;
@@ -57,8 +60,10 @@ import static com.alibaba.nacos.config.server.utils.RequestUtil.CLIENT_APPNAME_H
  * @author liuzunfei
  * @version $Id: ConfigQueryRequestHandler.java, v 0.1 2020年07月14日 9:54 AM liuzunfei Exp $
  */
+@Since("2.0.0")
 @Component
-public class ConfigQueryRequestHandler extends RequestHandler<ConfigQueryRequest, ConfigQueryResponse> {
+public class ConfigQueryRequestHandler
+    extends RequestHandler<ConfigQueryRequest, ConfigQueryResponse> {
     
     private static final Logger LOGGER = LoggerFactory.getLogger(ConfigQueryRequestHandler.class);
     
@@ -73,12 +78,14 @@ public class ConfigQueryRequestHandler extends RequestHandler<ConfigQueryRequest
     @TpsControl(pointName = "ConfigQuery")
     @Secured(action = ActionTypes.READ, signType = SignType.CONFIG)
     @ExtractorManager.Extractor(rpcExtractor = ConfigRequestParamExtractor.class)
-    public ConfigQueryResponse handle(ConfigQueryRequest request, RequestMeta meta) throws NacosException {
+    public ConfigQueryResponse handle(ConfigQueryRequest request, RequestMeta meta)
+        throws NacosException {
         try {
             request.setTenant(NamespaceUtil.processNamespaceParameter(request.getTenant()));
             String dataId = request.getDataId();
             String group = request.getGroup();
             String tenant = request.getTenant();
+            ParamUtils.checkParam(dataId, group, tenant);
             String groupKey = GroupKey2.getKey(dataId, group, tenant);
             boolean notify = request.isNotify();
             
@@ -86,35 +93,80 @@ public class ConfigQueryRequestHandler extends RequestHandler<ConfigQueryRequest
             String clientIp = meta.getClientIp();
             
             ConfigQueryChainRequest chainRequest = ConfigChainRequestExtractorService.getExtractor()
-                    .extract(request, meta);
+                .extract(request, meta);
             ConfigQueryChainResponse chainResponse = configQueryChainService.handle(chainRequest);
             
             if (ResponseCode.FAIL.getCode() == chainResponse.getResultCode()) {
-                return ConfigQueryResponse.buildFailResponse(ResponseCode.FAIL.getCode(), chainResponse.getMessage());
+                int errorCode = chainResponse.getErrorCode() == 0 ? ResponseCode.FAIL.getCode()
+                    : chainResponse.getErrorCode();
+                return ConfigQueryResponse.buildFailResponse(errorCode, chainResponse.getMessage());
             }
             
-            if (chainResponse.getStatus() == ConfigQueryChainResponse.ConfigQueryStatus.CONFIG_NOT_FOUND) {
-                return handlerConfigNotFound(request.getDataId(), request.getGroup(), request.getTenant(), requestIpApp,
-                        clientIp, notify);
+            // 304 Not-Modified: FormalHandler already skipped content read when MD5 matched.
+            // Return 304 directly with metadata, equivalent to the post-read comparison path.
+            if (chainResponse
+                .getStatus() == ConfigQueryChainResponse.ConfigQueryStatus.CONFIG_NOT_MODIFIED) {
+                String pullEvent = resolvePullEventType(chainResponse, request.getTag());
+                LogUtil.PULL_CHECK_LOG.warn("{}|{}|{}|{}", groupKey, clientIp,
+                    chainResponse.getMd5(), TimeUtils.getCurrentTimeStr());
+                final long delayed304 =
+                    System.currentTimeMillis() - chainResponse.getLastModified();
+                ConfigTraceService.logPullEvent(dataId, group, tenant, requestIpApp,
+                    chainResponse.getLastModified(), pullEvent,
+                    ConfigTraceService.PULL_TYPE_OK, delayed304, clientIp, notify, "grpc");
+                return buildNotModifiedResponse(chainResponse.getMd5(),
+                    chainResponse.getConfigType(), chainResponse.getLastModified());
             }
             
-            if (chainResponse.getStatus() == ConfigQueryChainResponse.ConfigQueryStatus.CONFIG_QUERY_CONFLICT) {
+            // 304 Not-Modified: if client provides localMd5 and it matches server md5,
+            // return 304 without content to save network bandwidth and server overhead.
+            String localMd5 = request.getLocalMd5();
+            if (StringUtils.isNotBlank(localMd5) && chainResponse.getMd5() != null
+                && localMd5.equals(chainResponse.getMd5())
+                && chainResponse.getContent() != null) {
+                // Emit pull log and trace event before returning 304, equivalent to normal path
+                String pullEvent = resolvePullEventType(chainResponse, request.getTag());
+                LogUtil.PULL_CHECK_LOG.warn("{}|{}|{}|{}", groupKey, clientIp,
+                    chainResponse.getMd5(), TimeUtils.getCurrentTimeStr());
+                final long delayed304 =
+                    System.currentTimeMillis() - chainResponse.getLastModified();
+                ConfigTraceService.logPullEvent(dataId, group, tenant, requestIpApp,
+                    chainResponse.getLastModified(), pullEvent,
+                    ConfigTraceService.PULL_TYPE_OK, delayed304, clientIp, notify, "grpc");
+                return buildNotModifiedResponse(chainResponse.getMd5(),
+                    chainResponse.getConfigType(), chainResponse.getLastModified());
+            }
+            
+            if (chainResponse
+                .getStatus() == ConfigQueryChainResponse.ConfigQueryStatus.CONFIG_NOT_FOUND) {
+                return handlerConfigNotFound(request.getDataId(), request.getGroup(),
+                    request.getTenant(), requestIpApp,
+                    clientIp, notify);
+            }
+            
+            if (chainResponse
+                .getStatus() == ConfigQueryChainResponse.ConfigQueryStatus.CONFIG_QUERY_CONFLICT) {
                 return handlerConfigConflict(clientIp, groupKey);
             }
             
             ConfigQueryResponse response = new ConfigQueryResponse();
             
             // Check if there is a matched gray rule
-            if (chainResponse.getStatus() == ConfigQueryChainResponse.ConfigQueryStatus.CONFIG_FOUND_GRAY) {
-                if (BetaGrayRule.TYPE_BETA.equals(chainResponse.getMatchedGray().getGrayRule().getType())) {
+            if (chainResponse
+                .getStatus() == ConfigQueryChainResponse.ConfigQueryStatus.CONFIG_FOUND_GRAY) {
+                if (BetaGrayRule.TYPE_BETA
+                    .equals(chainResponse.getMatchedGray().getGrayRule().getType())) {
                     response.setBeta(true);
-                } else if (TagGrayRule.TYPE_TAG.equals(chainResponse.getMatchedGray().getGrayRule().getType())) {
-                    response.setTag(URLEncoder.encode(chainResponse.getMatchedGray().getRawGrayRule(), ENCODE_UTF8));
+                } else if (TagGrayRule.TYPE_TAG
+                    .equals(chainResponse.getMatchedGray().getGrayRule().getType())) {
+                    response.setTag(URLEncoder
+                        .encode(chainResponse.getMatchedGray().getRawGrayRule(), ENCODE_UTF8));
                 }
             }
             
             // Check if there is a special tag
-            if (chainResponse.getStatus() == ConfigQueryChainResponse.ConfigQueryStatus.SPECIAL_TAG_CONFIG_NOT_FOUND) {
+            if (chainResponse
+                .getStatus() == ConfigQueryChainResponse.ConfigQueryStatus.SPECIAL_TAG_CONFIG_NOT_FOUND) {
                 response.setTag(request.getTag());
             }
             
@@ -127,23 +179,27 @@ public class ConfigQueryRequestHandler extends RequestHandler<ConfigQueryRequest
             String pullType = ConfigTraceService.PULL_TYPE_OK;
             if (chainResponse.getContent() == null) {
                 pullType = ConfigTraceService.PULL_TYPE_NOTFOUND;
-                response.setErrorInfo(ConfigQueryResponse.CONFIG_NOT_FOUND, "config data not exist");
+                response.setErrorInfo(ConfigQueryResponse.CONFIG_NOT_FOUND,
+                    "config data not exist");
             } else {
                 response.setResultCode(ResponseCode.SUCCESS.getCode());
             }
             
             String pullEvent = resolvePullEventType(chainResponse, request.getTag());
             LogUtil.PULL_CHECK_LOG.warn("{}|{}|{}|{}", groupKey, clientIp, response.getMd5(),
-                    TimeUtils.getCurrentTimeStr());
+                TimeUtils.getCurrentTimeStr());
             final long delayed = System.currentTimeMillis() - response.getLastModified();
-            ConfigTraceService.logPullEvent(dataId, group, tenant, requestIpApp, response.getLastModified(), pullEvent,
-                    pullType, delayed, clientIp, notify, "grpc");
+            ConfigTraceService.logPullEvent(dataId, group, tenant, requestIpApp,
+                response.getLastModified(), pullEvent,
+                pullType, delayed, clientIp, notify, "grpc");
             
             return response;
             
         } catch (Exception e) {
             LOGGER.error("Failed to handle grpc configuration query", e);
-            return ConfigQueryResponse.buildFailResponse(ResponseCode.FAIL.getCode(), e.getMessage());
+            int errorCode = e instanceof NacosException ? ((NacosException) e).getErrCode()
+                : ResponseCode.FAIL.getCode();
+            return ConfigQueryResponse.buildFailResponse(errorCode, e.getMessage());
         }
         
     }
@@ -153,17 +209,44 @@ public class ConfigQueryRequestHandler extends RequestHandler<ConfigQueryRequest
         
         PULL_LOG.info("[client-get] clientIp={}, {}, get data during dump", clientIp, groupKey);
         response.setErrorInfo(ConfigQueryResponse.CONFIG_QUERY_CONFLICT,
-                "requested file is being modified, please try later.");
+            "requested file is being modified, please try later.");
         
         return response;
     }
     
-    private ConfigQueryResponse handlerConfigNotFound(String dataId, String group, String tenant, String requestIpApp,
-            String clientIp, boolean notify) {
+    /**
+     * Build a 304 Not-Modified response.
+     *
+     * <p>When the client's local MD5 matches the server-side config MD5,
+     * return this response without content to save network bandwidth.
+     * Includes non-content metadata (md5, contentType, lastModified) so the
+     * client can fully reconstruct the ConfigResponse.</p>
+     *
+     * @param md5          MD5 of the current config content
+     * @param contentType  config type (json, yaml, properties, etc.)
+     * @param lastModified last modified timestamp
+     * @return 304 response
+     * @since 3.3.0
+     */
+    private ConfigQueryResponse buildNotModifiedResponse(String md5, String contentType,
+        long lastModified) {
+        ConfigQueryResponse response = new ConfigQueryResponse();
+        response.setErrorInfo(ConfigQueryResponse.CONFIG_NOT_MODIFIED,
+            "config not modified, use local cache");
+        response.setMd5(md5);
+        response.setContentType(contentType);
+        response.setLastModified(lastModified);
+        return response;
+    }
+    
+    private ConfigQueryResponse handlerConfigNotFound(String dataId, String group, String tenant,
+        String requestIpApp,
+        String clientIp, boolean notify) {
         //CacheItem No longer exists. It is impossible to simply calculate the push delayed. Here, simply record it as - 1.
         ConfigQueryResponse response = new ConfigQueryResponse();
-        ConfigTraceService.logPullEvent(dataId, group, tenant, requestIpApp, -1, ConfigTraceService.PULL_EVENT,
-                ConfigTraceService.PULL_TYPE_NOTFOUND, -1, clientIp, notify, "grpc");
+        ConfigTraceService.logPullEvent(dataId, group, tenant, requestIpApp, -1,
+            ConfigTraceService.PULL_EVENT,
+            ConfigTraceService.PULL_TYPE_NOTFOUND, -1, clientIp, notify, "grpc");
         response.setErrorInfo(ConfigQueryResponse.CONFIG_NOT_FOUND, "config data not exist");
         
         return response;
@@ -179,6 +262,15 @@ public class ConfigQueryRequestHandler extends RequestHandler<ConfigQueryRequest
                 } else {
                     return ConfigTraceService.PULL_EVENT;
                 }
+            case CONFIG_NOT_MODIFIED:
+                // 304 may come from either formal or gray/tag config. Check matchedGray
+                // to preserve correct pull-event classification instead of treating all
+                // 304s as formal reads.
+                ConfigCacheGray notModifiedGray = chainResponse.getMatchedGray();
+                if (notModifiedGray != null) {
+                    return ConfigTraceService.PULL_EVENT + "-" + notModifiedGray.getGrayName();
+                }
+                return ConfigTraceService.PULL_EVENT;
             case SPECIAL_TAG_CONFIG_NOT_FOUND:
                 return ConfigTraceService.PULL_EVENT + "-" + TagGrayRule.TYPE_TAG + "-" + tag;
             default:

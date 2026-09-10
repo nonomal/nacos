@@ -16,6 +16,7 @@
 
 package com.alibaba.nacos.plugin.auth.spi.server;
 
+import com.alibaba.nacos.api.plugin.PluginConfigSpec;
 import com.alibaba.nacos.plugin.auth.api.AuthResult;
 import com.alibaba.nacos.plugin.auth.api.IdentityContext;
 import com.alibaba.nacos.plugin.auth.api.Permission;
@@ -31,7 +32,7 @@ import java.util.Collection;
  * @author Wuyfee
  * @author xiweng.yy
  */
-public interface AuthPluginService {
+public interface AuthPluginService extends PluginConfigSpec {
     
     /**
      * Define which identity information needed from request. e.q: username, password, accessToken.
@@ -57,7 +58,8 @@ public interface AuthPluginService {
      * @return {@link AuthResult} of validate result
      * @throws AccessException if authentication is failed
      */
-    AuthResult validateIdentity(IdentityContext identityContext, Resource resource) throws AccessException;
+    AuthResult validateIdentity(IdentityContext identityContext, Resource resource)
+        throws AccessException;
     
     /**
      * Validate the identity whether has the resource authority.
@@ -67,7 +69,8 @@ public interface AuthPluginService {
      * @return {@link AuthResult} of validate result
      * @throws AccessException if authentication is failed
      */
-    AuthResult validateAuthority(IdentityContext identityContext, Permission permission) throws AccessException;
+    AuthResult validateAuthority(IdentityContext identityContext, Permission permission)
+        throws AccessException;
     
     /**
      * AuthPluginService Name which for conveniently find AuthPluginService instance.

@@ -16,22 +16,23 @@
 
 package com.alibaba.nacos.plugin.auth.impl.controller;
 
+import com.alibaba.nacos.api.annotation.Since;
+import com.alibaba.nacos.api.common.ApiType;
 import com.alibaba.nacos.api.common.Constants;
+import com.alibaba.nacos.auth.config.NacosAuthConfig;
+import com.alibaba.nacos.auth.config.NacosAuthConfigHolder;
 import com.alibaba.nacos.common.model.RestResultUtils;
-import com.alibaba.nacos.common.utils.JacksonUtils;
 import com.alibaba.nacos.core.controller.compatibility.Compatibility;
-import com.alibaba.nacos.plugin.auth.constant.ApiType;
 import com.alibaba.nacos.plugin.auth.exception.AccessException;
-import com.alibaba.nacos.plugin.auth.impl.configuration.AuthConfigs;
+import com.alibaba.nacos.plugin.auth.impl.authenticate.IAuthenticationManager;
 import com.alibaba.nacos.plugin.auth.impl.constant.AuthConstants;
 import com.alibaba.nacos.plugin.auth.impl.constant.AuthSystemTypes;
-import com.alibaba.nacos.plugin.auth.impl.authenticate.IAuthenticationManager;
 import com.alibaba.nacos.plugin.auth.impl.token.TokenManagerDelegate;
 import com.alibaba.nacos.plugin.auth.impl.users.NacosUser;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -43,11 +44,12 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
- * V1 auth user API - login only. Other v1 user/role/permission APIs have been
- * moved to nacos-api-legacy-adapter and are loaded when this plugin (new version)
- * is present.
+ * V1 auth user API - login only. Other v1 user/role/permission APIs have been moved to nacos-api-legacy-adapter and are
+ * loaded when this plugin (new version) is present.
  *
  * @author wfnuser
  * @author nkorange
@@ -55,22 +57,22 @@ import java.io.IOException;
 @RestController
 @RequestMapping({"/v1/auth", "/v1/auth/users"})
 public class UserController {
-
+    
     private final TokenManagerDelegate jwtTokenManager;
-    private final AuthConfigs authConfigs;
+    
     private final IAuthenticationManager iAuthenticationManager;
-
+    
     @Deprecated
     private final AuthenticationManager authenticationManager;
-
-    public UserController(TokenManagerDelegate jwtTokenManager, AuthConfigs authConfigs,
-            IAuthenticationManager iAuthenticationManager, AuthenticationManager authenticationManager) {
+    
+    public UserController(TokenManagerDelegate jwtTokenManager,
+        IAuthenticationManager iAuthenticationManager,
+        AuthenticationManager authenticationManager) {
         this.jwtTokenManager = jwtTokenManager;
-        this.authConfigs = authConfigs;
         this.iAuthenticationManager = iAuthenticationManager;
         this.authenticationManager = authenticationManager;
     }
-
+    
     /**
      * Login to Nacos (v1 API, kept for old clients).
      *
@@ -81,29 +83,40 @@ public class UserController {
      * @return new token of the user
      * @throws AccessException if user info is incorrect
      */
+    @Since("2.3.0")
     @PostMapping("/login")
-    @Compatibility(apiType = ApiType.OPEN_API, alternatives = "POST ${contextPath:nacos}/v3/auth/user/login")
-    public Object login(@RequestParam String username, @RequestParam String password, HttpServletResponse response,
-            HttpServletRequest request) throws AccessException, IOException {
-
-        if (AuthSystemTypes.NACOS.name().equalsIgnoreCase(authConfigs.getNacosAuthSystemType())
-                || AuthSystemTypes.LDAP.name().equalsIgnoreCase(authConfigs.getNacosAuthSystemType())) {
-
-            NacosUser user = iAuthenticationManager.authenticate(request);
-
-            response.addHeader(AuthConstants.AUTHORIZATION_HEADER, AuthConstants.TOKEN_PREFIX + user.getToken());
-
-            ObjectNode result = JacksonUtils.createEmptyJsonNode();
+    @Compatibility(apiType = ApiType.OPEN_API,
+        alternatives = "POST ${contextPath:nacos}/v3/auth/user/login")
+    public Object login(@RequestParam String username, @RequestParam String password,
+        HttpServletResponse response,
+        HttpServletRequest request) throws AccessException, IOException {
+        
+        String authSystemType = getServerAuthConfig().getNacosAuthSystemType();
+        if (AuthSystemTypes.NACOS.name().equalsIgnoreCase(authSystemType)
+            || AuthSystemTypes.LDAP.name().equalsIgnoreCase(authSystemType)) {
+            NacosUser user;
+            try {
+                user = iAuthenticationManager.authenticate(request);
+            } catch (AccessException ignored) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(AuthConstants.INVALID_CREDENTIALS_MESSAGE);
+            }
+            
+            response.addHeader(AuthConstants.AUTHORIZATION_HEADER,
+                AuthConstants.TOKEN_PREFIX + user.getToken());
+            
+            Map<String, Object> result = new HashMap<>();
             result.put(Constants.ACCESS_TOKEN, user.getToken());
             result.put(Constants.TOKEN_TTL, jwtTokenManager.getTokenTtlInSeconds(user.getToken()));
             result.put(Constants.GLOBAL_ADMIN, iAuthenticationManager.hasGlobalAdminRole(user));
             result.put(Constants.USERNAME, user.getUserName());
             return result;
         }
-
-        UsernamePasswordAuthenticationToken authenticationToken = new UsernamePasswordAuthenticationToken(username,
+        
+        UsernamePasswordAuthenticationToken authenticationToken =
+            new UsernamePasswordAuthenticationToken(username,
                 password);
-
+        
         try {
             Authentication authentication = authenticationManager.authenticate(authenticationToken);
             SecurityContextHolder.getContext().setAuthentication(authentication);
@@ -113,5 +126,10 @@ public class UserController {
         } catch (BadCredentialsException authentication) {
             return RestResultUtils.failed(HttpStatus.UNAUTHORIZED.value(), null, "Login failed");
         }
+    }
+    
+    private NacosAuthConfig getServerAuthConfig() {
+        return NacosAuthConfigHolder.getInstance()
+            .getNacosAuthConfigByScope(ApiType.OPEN_API.name());
     }
 }

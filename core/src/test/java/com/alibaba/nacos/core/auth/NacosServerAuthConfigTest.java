@@ -17,9 +17,10 @@
 
 package com.alibaba.nacos.core.auth;
 
+import com.alibaba.nacos.api.common.ApiType;
 import com.alibaba.nacos.api.exception.runtime.NacosRuntimeException;
 import com.alibaba.nacos.auth.config.AuthErrorCode;
-import com.alibaba.nacos.plugin.auth.constant.ApiType;
+import com.alibaba.nacos.common.event.ServerConfigChangeEvent;
 import com.alibaba.nacos.plugin.auth.constant.Constants;
 import com.alibaba.nacos.sys.env.EnvUtil;
 import org.junit.jupiter.api.AfterEach;
@@ -28,8 +29,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.mock.env.MockEnvironment;
-
-import java.util.Properties;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -44,33 +43,42 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 @ExtendWith(MockitoExtension.class)
 class NacosServerAuthConfigTest {
-
+    
     private MockEnvironment environment;
-
+    
     @BeforeEach
     void setUp() {
         environment = new MockEnvironment();
-        environment.setProperty(Constants.Auth.NACOS_CORE_AUTH_ENABLED, "false");
+        environment.setProperty(Constants.Auth.NACOS_CORE_AUTH_SYSTEM_TYPE, "nacos");
+        environment.setProperty(Constants.Auth.NACOS_CORE_AUTH_SERVER_IDENTITY_KEY, "key");
+        environment.setProperty(Constants.Auth.NACOS_CORE_AUTH_SERVER_IDENTITY_VALUE, "value");
         EnvUtil.setEnvironment(environment);
     }
-
+    
     @AfterEach
     void tearDown() {
         EnvUtil.setEnvironment(null);
     }
-
+    
     @Test
     void testGetAuthScope() {
         NacosServerAuthConfig config = new NacosServerAuthConfig();
         assertEquals(ApiType.OPEN_API.name(), config.getAuthScope());
     }
-
+    
     @Test
-    void testIsAuthEnabledWhenDisabled() {
+    void testIsAuthEnabledWhenPropertyMissing() {
+        NacosServerAuthConfig config = new NacosServerAuthConfig();
+        assertTrue(config.isAuthEnabled());
+    }
+    
+    @Test
+    void testIsAuthEnabledWhenExplicitlyDisabled() {
+        environment.setProperty(Constants.Auth.NACOS_CORE_AUTH_ENABLED, "false");
         NacosServerAuthConfig config = new NacosServerAuthConfig();
         assertFalse(config.isAuthEnabled());
     }
-
+    
     @Test
     void testIsAuthEnabledWhenEnabled() {
         environment.setProperty(Constants.Auth.NACOS_CORE_AUTH_ENABLED, "true");
@@ -80,65 +88,60 @@ class NacosServerAuthConfigTest {
         NacosServerAuthConfig config = new NacosServerAuthConfig();
         assertTrue(config.isAuthEnabled());
     }
-
+    
     @Test
     void testGetNacosAuthSystemType() {
         environment.setProperty(Constants.Auth.NACOS_CORE_AUTH_SYSTEM_TYPE, "ldap");
         NacosServerAuthConfig config = new NacosServerAuthConfig();
         assertEquals("ldap", config.getNacosAuthSystemType());
     }
-
+    
+    @Test
+    void testStandardAuthTypeTakesPrecedence() {
+        environment.setProperty(Constants.Auth.NACOS_CORE_AUTH_SYSTEM_TYPE, "ldap");
+        environment.setProperty(Constants.Auth.NACOS_PLUGIN_AUTH_TYPE, "oidc");
+        NacosServerAuthConfig config = new NacosServerAuthConfig();
+        assertEquals("oidc", config.getNacosAuthSystemType());
+    }
+    
     @Test
     void testIsSupportServerIdentity() {
         NacosServerAuthConfig config = new NacosServerAuthConfig();
         assertTrue(config.isSupportServerIdentity());
     }
-
+    
     @Test
     void testGetServerIdentityKeyAndValue() {
         environment.setProperty(Constants.Auth.NACOS_CORE_AUTH_SERVER_IDENTITY_KEY, "identity-key");
-        environment.setProperty(Constants.Auth.NACOS_CORE_AUTH_SERVER_IDENTITY_VALUE, "identity-value");
+        environment.setProperty(Constants.Auth.NACOS_CORE_AUTH_SERVER_IDENTITY_VALUE,
+            "identity-value");
         NacosServerAuthConfig config = new NacosServerAuthConfig();
         assertEquals("identity-key", config.getServerIdentityKey());
         assertEquals("identity-value", config.getServerIdentityValue());
     }
-
-    @Test
-    void testGetAuthPluginPropertiesWhenTypeNotFound() {
-        NacosServerAuthConfig config = new NacosServerAuthConfig();
-        Properties props = config.getAuthPluginProperties("unknownType");
-        assertNotNull(props);
-        assertTrue(props.isEmpty());
-    }
-
-    @Test
-    void testGetAuthPluginPropertiesWithPrefix() {
-        environment.setProperty("nacos.core.auth.plugin.nacos.key1", "value1");
-        environment.setProperty("nacos.core.auth.plugin.nacos.key2", "value2");
-        NacosServerAuthConfig config = new NacosServerAuthConfig();
-        Properties props = config.getAuthPluginProperties("nacos");
-        assertNotNull(props);
-        assertEquals("value1", props.getProperty("key1"));
-        assertEquals("value2", props.getProperty("key2"));
-    }
-
+    
     @Test
     void testValidateThrowsWhenAuthEnabledButEmptyType() {
         environment.setProperty(Constants.Auth.NACOS_CORE_AUTH_ENABLED, "true");
-        NacosRuntimeException ex = assertThrows(NacosRuntimeException.class, NacosServerAuthConfig::new);
+        environment.setProperty(Constants.Auth.NACOS_CORE_AUTH_SYSTEM_TYPE, "");
+        NacosRuntimeException ex =
+            assertThrows(NacosRuntimeException.class, NacosServerAuthConfig::new);
         assertEquals(AuthErrorCode.INVALID_TYPE.getCode(), ex.getErrCode());
         assertTrue(ex.getMessage().contains(AuthErrorCode.INVALID_TYPE.getMsg()));
     }
-
+    
     @Test
     void testValidateThrowsWhenAuthEnabledButEmptyIdentity() {
         environment.setProperty(Constants.Auth.NACOS_CORE_AUTH_ENABLED, "true");
         environment.setProperty(Constants.Auth.NACOS_CORE_AUTH_SYSTEM_TYPE, "nacos");
-        NacosRuntimeException ex = assertThrows(NacosRuntimeException.class, NacosServerAuthConfig::new);
+        environment.setProperty(Constants.Auth.NACOS_CORE_AUTH_SERVER_IDENTITY_KEY, "");
+        environment.setProperty(Constants.Auth.NACOS_CORE_AUTH_SERVER_IDENTITY_VALUE, "");
+        NacosRuntimeException ex =
+            assertThrows(NacosRuntimeException.class, NacosServerAuthConfig::new);
         assertEquals(AuthErrorCode.EMPTY_IDENTITY.getCode(), ex.getErrCode());
         assertTrue(ex.getMessage().contains(AuthErrorCode.EMPTY_IDENTITY.getMsg()));
     }
-
+    
     @Test
     void testToString() {
         NacosServerAuthConfig config = new NacosServerAuthConfig();
@@ -147,4 +150,19 @@ class NacosServerAuthConfigTest {
         assertTrue(str.contains("NacosServerAuthConfig"));
         assertTrue(str.contains("authEnabled"));
     }
+    
+    @Test
+    void testDynamicAuthSwitchKeepsExplicitFalseAndTrue() {
+        NacosServerAuthConfig config = new NacosServerAuthConfig();
+        assertTrue(config.isAuthEnabled());
+        
+        environment.setProperty(Constants.Auth.NACOS_CORE_AUTH_ENABLED, "false");
+        config.onEvent(ServerConfigChangeEvent.newEvent());
+        assertFalse(config.isAuthEnabled());
+        
+        environment.setProperty(Constants.Auth.NACOS_CORE_AUTH_ENABLED, "true");
+        config.onEvent(ServerConfigChangeEvent.newEvent());
+        assertTrue(config.isAuthEnabled());
+    }
+    
 }

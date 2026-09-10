@@ -25,11 +25,14 @@ import com.alibaba.nacos.ai.index.McpCacheIndex;
 import com.alibaba.nacos.ai.index.McpServerIndex;
 import com.alibaba.nacos.ai.index.MemoryMcpCacheIndex;
 import com.alibaba.nacos.ai.index.PlainMcpServerIndex;
+import com.alibaba.nacos.ai.service.mcp.McpCompatibilityMode;
+import com.alibaba.nacos.ai.service.mcp.McpCompatibilityModeResolver;
 import com.alibaba.nacos.config.server.service.ConfigDetailService;
 import com.alibaba.nacos.config.server.service.query.ConfigQueryChainService;
 import com.alibaba.nacos.core.service.NamespaceOperationService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -57,11 +60,13 @@ public class McpServerIndexConfiguration {
      * Create memory cache index Bean.
      */
     @Bean
-    @ConditionalOnProperty(name = "nacos.mcp.cache.enabled", havingValue = "true", matchIfMissing = true)
+    @ConditionalOnProperty(name = "nacos.mcp.cache.enabled", havingValue = "true",
+        matchIfMissing = true)
     public McpCacheIndex mcpCacheIndex() {
-        LOGGER.info("Creating McpCacheIndex bean with maxSize={}, expireTime={}s, cleanupInterval={}s",
-                cacheProperties.getMaxSize(), cacheProperties.getExpireTimeSeconds(),
-                cacheProperties.getCleanupIntervalSeconds());
+        LOGGER.info(
+            "Creating McpCacheIndex bean with maxSize={}, expireTime={}s, cleanupInterval={}s",
+            cacheProperties.getMaxSize(), cacheProperties.getExpireTimeSeconds(),
+            cacheProperties.getCleanupIntervalSeconds());
         return new MemoryMcpCacheIndex(cacheProperties);
     }
     
@@ -69,10 +74,11 @@ public class McpServerIndexConfiguration {
      * Create scheduled task executor Bean.
      */
     @Bean
-    @ConditionalOnProperty(name = "nacos.mcp.cache.enabled", havingValue = "true", matchIfMissing = true)
+    @ConditionalOnProperty(name = "nacos.mcp.cache.enabled", havingValue = "true",
+        matchIfMissing = true)
     public ScheduledExecutorService mcpCacheScheduledExecutor() {
         LOGGER.info("Creating ScheduledExecutorService for MCP cache with syncInterval={}s",
-                cacheProperties.getSyncIntervalSeconds());
+            cacheProperties.getSyncIntervalSeconds());
         // Manually create thread pool, following Alibaba coding standards
         return new ScheduledThreadPoolExecutor(1, r -> {
             Thread t = new Thread(r, "mcp-cache-sync");
@@ -86,14 +92,19 @@ public class McpServerIndexConfiguration {
      */
     @Bean
     @Primary
-    @ConditionalOnProperty(name = "nacos.mcp.cache.enabled", havingValue = "true", matchIfMissing = true)
+    @ConditionalOnProperty(name = "nacos.mcp.cache.enabled", havingValue = "true",
+        matchIfMissing = true)
     public McpServerIndex cachedMcpServerIndex(ConfigDetailService configDetailService,
-            NamespaceOperationService namespaceOperationService, ConfigQueryChainService configQueryChainService,
-            McpCacheIndex mcpCacheIndex, ScheduledExecutorService mcpCacheScheduledExecutor) {
+        NamespaceOperationService namespaceOperationService,
+        ConfigQueryChainService configQueryChainService,
+        McpCacheIndex mcpCacheIndex, ScheduledExecutorService mcpCacheScheduledExecutor,
+        ObjectProvider<McpCompatibilityModeResolver> modeResolverProvider) {
         LOGGER.info("Creating CachedMcpServerIndex bean with cache enabled");
-        return new CachedMcpServerIndex(configDetailService, namespaceOperationService, configQueryChainService,
-                mcpCacheIndex, mcpCacheScheduledExecutor, cacheProperties.isEnabled(),
-                cacheProperties.getSyncIntervalSeconds());
+        return new CachedMcpServerIndex(configDetailService, namespaceOperationService,
+            configQueryChainService,
+            mcpCacheIndex, mcpCacheScheduledExecutor, cacheProperties.isEnabled(),
+            cacheProperties.getSyncIntervalSeconds(),
+            () -> isHistoricalIndexRequired(modeResolverProvider));
     }
     
     /**
@@ -103,8 +114,17 @@ public class McpServerIndexConfiguration {
     @Primary
     @ConditionalOnProperty(name = "nacos.mcp.cache.enabled", havingValue = "false")
     public McpServerIndex plainMcpServerIndex(ConfigDetailService configDetailService,
-            NamespaceOperationService namespaceOperationService, ConfigQueryChainService configQueryChainService) {
+        NamespaceOperationService namespaceOperationService,
+        ConfigQueryChainService configQueryChainService) {
         LOGGER.info("Creating PlainMcpServerIndex bean as cache is disabled");
-        return new PlainMcpServerIndex(namespaceOperationService, configDetailService, configQueryChainService);
+        return new PlainMcpServerIndex(namespaceOperationService, configDetailService,
+            configQueryChainService);
     }
-} 
+    
+    private boolean isHistoricalIndexRequired(
+        ObjectProvider<McpCompatibilityModeResolver> modeResolverProvider) {
+        McpCompatibilityModeResolver resolver = modeResolverProvider.getIfAvailable();
+        return resolver == null
+            || McpCompatibilityMode.LIFECYCLE_MANAGED != resolver.resolve();
+    }
+}

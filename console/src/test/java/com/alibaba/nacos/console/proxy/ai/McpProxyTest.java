@@ -17,8 +17,14 @@
 package com.alibaba.nacos.console.proxy.ai;
 
 import com.alibaba.nacos.api.ai.model.mcp.McpEndpointSpec;
+import com.alibaba.nacos.api.ai.model.mcp.McpServerVersionDetail;
+import com.alibaba.nacos.api.ai.model.mcp.McpServerVersionSummary;
+import com.alibaba.nacos.api.ai.model.mcp.McpResourceSpecification;
 import com.alibaba.nacos.api.ai.model.mcp.McpServerBasicInfo;
 import com.alibaba.nacos.api.ai.model.mcp.McpServerDetailInfo;
+import com.alibaba.nacos.api.ai.model.mcp.McpServerImportRequest;
+import com.alibaba.nacos.api.ai.model.mcp.McpServerImportResponse;
+import com.alibaba.nacos.api.ai.model.mcp.McpServerImportValidationResult;
 import com.alibaba.nacos.api.ai.model.mcp.McpToolSpecification;
 import com.alibaba.nacos.api.exception.NacosException;
 import com.alibaba.nacos.api.model.Page;
@@ -31,6 +37,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -61,7 +68,8 @@ public class McpProxyTest {
     @Test
     public void getMcpServer() throws NacosException {
         McpServerDetailInfo expectedInfo = new McpServerDetailInfo();
-        when(mcpHandler.getMcpServer(NAMESPACE_ID, MCP_NAME, "id", "version")).thenReturn(expectedInfo);
+        when(mcpHandler.getMcpServer(NAMESPACE_ID, MCP_NAME, "id", "version"))
+            .thenReturn(expectedInfo);
         
         McpServerDetailInfo result = mcpProxy.getMcpServer(NAMESPACE_ID, MCP_NAME, "id", "version");
         
@@ -86,12 +94,15 @@ public class McpProxyTest {
         expectedPage.setPagesAvailable(1);
         expectedPage.setTotalCount(serverList.size());
         
-        when(mcpHandler.listMcpServers(NAMESPACE_ID, MCP_NAME, search, pageNo, pageSize)).thenReturn(expectedPage);
+        when(mcpHandler.listMcpServers(NAMESPACE_ID, MCP_NAME, search, pageNo, pageSize))
+            .thenReturn(expectedPage);
         
-        Page<McpServerBasicInfo> result = mcpProxy.listMcpServers(NAMESPACE_ID, MCP_NAME, search, pageNo, pageSize);
+        Page<McpServerBasicInfo> result =
+            mcpProxy.listMcpServers(NAMESPACE_ID, MCP_NAME, search, pageNo, pageSize);
         
         assertEquals(expectedPage, result);
-        verify(mcpHandler, times(1)).listMcpServers(NAMESPACE_ID, MCP_NAME, search, pageNo, pageSize);
+        verify(mcpHandler, times(1)).listMcpServers(NAMESPACE_ID, MCP_NAME, search, pageNo,
+            pageSize);
     }
     
     @Test
@@ -102,15 +113,17 @@ public class McpProxyTest {
         McpToolSpecification toolSpecification = new McpToolSpecification();
         McpEndpointSpec endpointSpecification = new McpEndpointSpec();
         
-        when(mcpHandler.createMcpServer(NAMESPACE_ID, serverSpecification, toolSpecification, endpointSpecification)).thenReturn(mcpId);
+        when(mcpHandler.createMcpServer(NAMESPACE_ID, serverSpecification, toolSpecification,
+            endpointSpecification)).thenReturn(mcpId);
         
         assertDoesNotThrow(() -> {
             mcpProxy.createMcpServer(NAMESPACE_ID, serverSpecification, toolSpecification,
-                    endpointSpecification);
+                endpointSpecification);
         });
         
-        verify(mcpHandler, times(1)).createMcpServer(NAMESPACE_ID, serverSpecification, toolSpecification,
-                endpointSpecification);
+        verify(mcpHandler, times(1)).createMcpServer(NAMESPACE_ID, serverSpecification,
+            toolSpecification,
+            endpointSpecification);
     }
     
     @Test
@@ -120,21 +133,25 @@ public class McpProxyTest {
         McpEndpointSpec endpointSpecification = new McpEndpointSpec();
         
         doNothing().when(mcpHandler)
-                .updateMcpServer(NAMESPACE_ID, true, serverSpecification, toolSpecification, endpointSpecification, false);
+            .updateMcpServer(NAMESPACE_ID, true, serverSpecification, toolSpecification,
+                endpointSpecification, false);
         
-        mcpProxy.updateMcpServer(NAMESPACE_ID, true, serverSpecification, toolSpecification, endpointSpecification, false);
+        mcpProxy.updateMcpServer(NAMESPACE_ID, true, serverSpecification, toolSpecification,
+            endpointSpecification, false);
     }
-
+    
     @Test
     public void updateMcpServerWithOverrideExisting() throws NacosException {
         McpServerBasicInfo serverSpecification = new McpServerBasicInfo();
         McpToolSpecification toolSpecification = new McpToolSpecification();
         McpEndpointSpec endpointSpecification = new McpEndpointSpec();
-
+        
         doNothing().when(mcpHandler)
-                .updateMcpServer(NAMESPACE_ID, true, serverSpecification, toolSpecification, endpointSpecification, true);
-
-        mcpProxy.updateMcpServer(NAMESPACE_ID, true, serverSpecification, toolSpecification, endpointSpecification, true);
+            .updateMcpServer(NAMESPACE_ID, true, serverSpecification, toolSpecification,
+                endpointSpecification, true);
+        
+        mcpProxy.updateMcpServer(NAMESPACE_ID, true, serverSpecification, toolSpecification,
+            endpointSpecification, true);
     }
     
     @Test
@@ -142,5 +159,94 @@ public class McpProxyTest {
         doNothing().when(mcpHandler).deleteMcpServer(NAMESPACE_ID, MCP_NAME, "id", "version");
         mcpProxy.deleteMcpServer(NAMESPACE_ID, MCP_NAME, "id", "version");
         verify(mcpHandler).deleteMcpServer(NAMESPACE_ID, MCP_NAME, "id", "version");
+    }
+    
+    @Test
+    public void standardLifecycleMethodsDelegateToHandler() throws NacosException {
+        McpServerBasicInfo server = new McpServerBasicInfo();
+        McpToolSpecification tools = new McpToolSpecification();
+        McpResourceSpecification resources = new McpResourceSpecification();
+        McpEndpointSpec endpoint = new McpEndpointSpec();
+        McpServerVersionDetail detail = new McpServerVersionDetail();
+        McpServerVersionSummary summary = new McpServerVersionSummary();
+        Page<McpServerVersionSummary> page = new Page<>();
+        Map<String, String> labels = Map.of("stable", "1.0.0");
+        when(mcpHandler.listMcpServerVersions(NAMESPACE_ID, MCP_NAME, "draft", 1, 10))
+            .thenReturn(page);
+        when(mcpHandler.getMcpServerVersion(NAMESPACE_ID, MCP_NAME, "1.0.0"))
+            .thenReturn(detail);
+        when(mcpHandler.createMcpServerDraft(NAMESPACE_ID, server, tools, resources, endpoint))
+            .thenReturn(detail);
+        when(mcpHandler.updateMcpServerDraft(NAMESPACE_ID, server, tools, resources, endpoint))
+            .thenReturn(detail);
+        when(mcpHandler.submitMcpServerVersion(NAMESPACE_ID, MCP_NAME, "1.0.0"))
+            .thenReturn(summary);
+        when(mcpHandler.publishMcpServerVersion(NAMESPACE_ID, MCP_NAME, "1.0.0"))
+            .thenReturn(summary);
+        when(mcpHandler.forcePublishMcpServerVersion(NAMESPACE_ID, MCP_NAME, "1.0.0"))
+            .thenReturn(summary);
+        when(mcpHandler.redraftMcpServerVersion(NAMESPACE_ID, MCP_NAME, "1.0.0"))
+            .thenReturn(summary);
+        when(mcpHandler.onlineMcpServerVersion(NAMESPACE_ID, MCP_NAME, "1.0.0"))
+            .thenReturn(summary);
+        when(mcpHandler.offlineMcpServerVersion(NAMESPACE_ID, MCP_NAME, "1.0.0"))
+            .thenReturn(summary);
+        when(mcpHandler.updateMcpServerLabels(NAMESPACE_ID, MCP_NAME, labels))
+            .thenReturn(labels);
+        
+        assertEquals(page,
+            mcpProxy.listMcpServerVersions(NAMESPACE_ID, MCP_NAME, "draft", 1, 10));
+        assertEquals(detail,
+            mcpProxy.getMcpServerVersion(NAMESPACE_ID, MCP_NAME, "1.0.0"));
+        assertEquals(detail,
+            mcpProxy.createMcpServerDraft(NAMESPACE_ID, server, tools, resources, endpoint));
+        assertEquals(detail,
+            mcpProxy.updateMcpServerDraft(NAMESPACE_ID, server, tools, resources, endpoint));
+        mcpProxy.deleteMcpServerDraft(NAMESPACE_ID, MCP_NAME, "1.0.0");
+        assertEquals(summary,
+            mcpProxy.submitMcpServerVersion(NAMESPACE_ID, MCP_NAME, "1.0.0"));
+        assertEquals(summary,
+            mcpProxy.publishMcpServerVersion(NAMESPACE_ID, MCP_NAME, "1.0.0"));
+        assertEquals(summary,
+            mcpProxy.forcePublishMcpServerVersion(NAMESPACE_ID, MCP_NAME, "1.0.0"));
+        assertEquals(summary,
+            mcpProxy.redraftMcpServerVersion(NAMESPACE_ID, MCP_NAME, "1.0.0"));
+        assertEquals(summary,
+            mcpProxy.onlineMcpServerVersion(NAMESPACE_ID, MCP_NAME, "1.0.0"));
+        assertEquals(summary,
+            mcpProxy.offlineMcpServerVersion(NAMESPACE_ID, MCP_NAME, "1.0.0"));
+        assertEquals(labels,
+            mcpProxy.updateMcpServerLabels(NAMESPACE_ID, MCP_NAME, labels));
+        mcpProxy.updateMcpServerStatus(NAMESPACE_ID, MCP_NAME, false);
+        mcpProxy.updateMcpServerScope(NAMESPACE_ID, MCP_NAME, "PRIVATE");
+        verify(mcpHandler).deleteMcpServerDraft(NAMESPACE_ID, MCP_NAME, "1.0.0");
+        verify(mcpHandler).updateMcpServerStatus(NAMESPACE_ID, MCP_NAME, false);
+        verify(mcpHandler).updateMcpServerScope(NAMESPACE_ID, MCP_NAME, "PRIVATE");
+    }
+    
+    @Test
+    public void validateImport() throws NacosException {
+        McpServerImportRequest request = new McpServerImportRequest();
+        McpServerImportValidationResult expected = new McpServerImportValidationResult();
+        when(mcpHandler.validateImport(NAMESPACE_ID, request)).thenReturn(expected);
+        
+        McpServerImportValidationResult result = mcpProxy.validateImport(NAMESPACE_ID, request);
+        
+        assertNotNull(result);
+        assertEquals(expected, result);
+        verify(mcpHandler).validateImport(NAMESPACE_ID, request);
+    }
+    
+    @Test
+    public void executeImport() throws NacosException {
+        McpServerImportRequest request = new McpServerImportRequest();
+        McpServerImportResponse expected = new McpServerImportResponse();
+        when(mcpHandler.executeImport(NAMESPACE_ID, request)).thenReturn(expected);
+        
+        McpServerImportResponse result = mcpProxy.executeImport(NAMESPACE_ID, request);
+        
+        assertNotNull(result);
+        assertEquals(expected, result);
+        verify(mcpHandler).executeImport(NAMESPACE_ID, request);
     }
 }

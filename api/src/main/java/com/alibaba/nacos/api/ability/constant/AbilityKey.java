@@ -34,13 +34,15 @@ public enum AbilityKey {
     /**
      * Server support register or deregister persistent instance by grpc.
      */
-    SERVER_PERSISTENT_INSTANCE_BY_GRPC("supportPersistentInstanceByGrpc", "support persistent instance by grpc",
-            AbilityMode.SERVER),
+    SERVER_PERSISTENT_INSTANCE_BY_GRPC("supportPersistentInstanceByGrpc",
+        "support persistent instance by grpc",
+        AbilityMode.SERVER),
     
     /**
      * For fuzzy watch naming or config.
      */
-    SERVER_FUZZY_WATCH("fuzzyWatch", "Server whether support fuzzy watch service or config", AbilityMode.SERVER),
+    SERVER_FUZZY_WATCH("fuzzyWatch", "Server whether support fuzzy watch service or config",
+        AbilityMode.SERVER),
     
     /**
      * For Distributed Lock.
@@ -50,37 +52,77 @@ public enum AbilityKey {
     /**
      * For AI module MCP registry.
      */
-    SERVER_MCP_REGISTRY("mcp", "Server whether support release mcp server and register endpoint for mcp server",
-            AbilityMode.SERVER),
+    SERVER_MCP_REGISTRY("mcp",
+        "Server whether support release mcp server and register endpoint for mcp server",
+        AbilityMode.SERVER),
+    
+    /**
+     * For creating an MCP lifecycle draft through the Client release request.
+     */
+    SERVER_MCP_DRAFT_RELEASE("mcpDraftRelease",
+        "Server whether support creating an MCP lifecycle draft through Client release",
+        AbilityMode.SERVER),
     
     /**
      * For AI module Agent & Agent Card registry.
      */
-    SERVER_AGENT_REGISTRY("agent", "Server whether support release agent server and register endpoint for agent server",
-            AbilityMode.SERVER),
+    SERVER_AGENT_REGISTRY("agent",
+        "Server whether support release agent server and register endpoint for agent server",
+        AbilityMode.SERVER),
+    
+    /**
+     * For AI module A2A AgentCard 1.0 protocol.
+     */
+    SERVER_AGENT_CARD_V1("agentCardV1", "Server whether support A2A AgentCard 1.0 protocol",
+        AbilityMode.SERVER),
+    
+    /**
+     * Negotiation key for the complete RAD v1 contract introduced by Nacos 3.3.
+     *
+     * <p>The contract includes Agent definition publication, Search and Discover, and Runtime
+     * Endpoint publication. Independently deployable future contracts such as server Watch/Push
+     * require their own ability key.</p>
+     */
+    SERVER_RAD_V1("radV1", "Server whether support the complete RAD v1 contract",
+        AbilityMode.SERVER),
+    
+    /**
+     * Server support the RAD Watch hint binding.
+     */
+    SERVER_RAD_WATCH_V1("radWatchV1", "Server whether support RAD Watch hint push",
+        AbilityMode.SERVER),
     
     /**
      * For fuzzy watch naming or config.
      */
     SDK_CLIENT_FUZZY_WATCH("fuzzyWatch", "Client whether support fuzzy watch service or config",
-            AbilityMode.SDK_CLIENT),
+        AbilityMode.SDK_CLIENT),
     
     /**
      * For Distributed Lock.
      */
-    SDK_CLIENT_DISTRIBUTED_LOCK("lock", "Client whether support distributed lock", AbilityMode.SDK_CLIENT),
+    SDK_CLIENT_DISTRIBUTED_LOCK("lock", "Client whether support distributed lock",
+        AbilityMode.SDK_CLIENT),
     
     /**
      * For AI module MCP registry.
      */
-    SDK_MCP_REGISTRY("mcp", "Client whether support release mcp server and register endpoint for mcp server",
-            AbilityMode.SDK_CLIENT),
+    SDK_MCP_REGISTRY("mcp",
+        "Client whether support release mcp server and register endpoint for mcp server",
+        AbilityMode.SDK_CLIENT),
     
     /**
      * For AI module Agent & Agent Card registry.
      */
-    SDK_AGENT_REGISTRY("agent", "Client whether support release agent server and register endpoint for agent server",
-            AbilityMode.SDK_CLIENT),
+    SDK_AGENT_REGISTRY("agent",
+        "Client whether support release agent server and register endpoint for agent server",
+        AbilityMode.SDK_CLIENT),
+    
+    /**
+     * SDK client support the RAD Watch hint binding.
+     */
+    SDK_RAD_WATCH_V1("radWatchV1", "Client whether support RAD Watch hint push",
+        AbilityMode.SDK_CLIENT),
     
     /**
      * For Test temporarily.
@@ -153,20 +195,6 @@ public enum AbilityKey {
         return ALL_ABILITIES.get(mode).containsKey(name);
     }
     
-    /**
-     * Map the string key to enum.
-     *
-     * @param abilities map
-     * @return enum map
-     */
-    public static Map<AbilityKey, Boolean> mapEnum(AbilityMode mode, Map<String, Boolean> abilities) {
-        if (abilities == null || abilities.isEmpty()) {
-            return Collections.emptyMap();
-        }
-        return abilities.entrySet().stream().filter(entry -> isLegalKey(mode, entry.getKey()))
-                .collect(Collectors.toMap((entry) -> getEnum(mode, entry.getKey()), Map.Entry::getValue));
-    }
-    
     /**.
      * Map the string key to enum
      *
@@ -178,7 +206,7 @@ public enum AbilityKey {
             return Collections.emptyMap();
         }
         return abilities.entrySet().stream()
-                .collect(Collectors.toMap((entry) -> entry.getKey().getName(), Map.Entry::getValue));
+            .collect(Collectors.toMap((entry) -> entry.getKey().getName(), Map.Entry::getValue));
     }
     
     /**.
@@ -201,7 +229,8 @@ public enum AbilityKey {
                 AbilityKey previous = map.putIfAbsent(value.getName(), value);
                 if (previous != null) {
                     throw new IllegalStateException(
-                            "Duplicate key name field " + value + " and " + previous + " under mode: " + mode);
+                        "Duplicate key name field " + value + " and " + previous + " under mode: "
+                            + mode);
                 }
                 ALL_ABILITIES.put(mode, map);
             }

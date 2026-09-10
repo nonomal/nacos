@@ -54,9 +54,12 @@ public interface ConfigInfoMapper extends Mapper {
      *
      * @param context sql paramMap
      * @return The sql of finding all dataId and group.
+     * @deprecated Unused by current datasource flows; kept temporarily for plugin compatibility.
      */
+    @Deprecated
     default MapperResult findAllDataIdAndGroup(MapperContext context) {
-        return new MapperResult("SELECT DISTINCT data_id, group_id FROM config_info", Collections.emptyList());
+        return new MapperResult("SELECT DISTINCT data_id, group_id FROM config_info",
+            Collections.emptyList());
     }
     
     /**
@@ -65,7 +68,9 @@ public interface ConfigInfoMapper extends Mapper {
      *
      * @param context sql paramMap
      * @return The sql of querying the count of config_info.
+     * @deprecated Unused by current datasource flows; kept temporarily for plugin compatibility.
      */
+    @Deprecated
     default MapperResult findConfigInfoByAppCountRows(MapperContext context) {
         Object tenantId = context.getWhereParameter(FieldConstant.TENANT_ID);
         Object appName = context.getWhereParameter(FieldConstant.APP_NAME);
@@ -79,7 +84,9 @@ public interface ConfigInfoMapper extends Mapper {
      *
      * @param context The context of startRow, pageSize
      * @return The sql of querying configuration information based on group.
+     * @deprecated Unused by current datasource flows; kept temporarily for plugin compatibility.
      */
+    @Deprecated
     MapperResult findConfigInfoByAppFetchRows(MapperContext context);
     
     /**
@@ -120,7 +127,9 @@ public interface ConfigInfoMapper extends Mapper {
      *
      * @param context The context of startRow, pageSize
      * @return The sql of querying all configuration information.
+     * @deprecated Unused by current datasource flows; kept temporarily for plugin compatibility.
      */
+    @Deprecated
     MapperResult findAllConfigKey(MapperContext context);
     
     /**
@@ -129,7 +138,9 @@ public interface ConfigInfoMapper extends Mapper {
      *
      * @param context The context of startRow, pageSize
      * @return The sql of querying all configuration information by page.
+     * @deprecated Unused by current datasource flows; kept temporarily for plugin compatibility.
      */
+    @Deprecated
     MapperResult findAllConfigInfoBaseFetchRows(MapperContext context);
     
     /**
@@ -151,9 +162,10 @@ public interface ConfigInfoMapper extends Mapper {
      */
     default MapperResult findChangeConfig(MapperContext context) {
         String sql =
-                "SELECT id, data_id, group_id, tenant_id, app_name,md5, gmt_modified, encrypted_data_key FROM config_info WHERE "
-                        + "gmt_modified >= ? and id > ? order by id  limit ? ";
-        return new MapperResult(sql, CollectionUtils.list(context.getWhereParameter(FieldConstant.START_TIME),
+            "SELECT id, data_id, group_id, tenant_id, app_name,md5, gmt_modified, encrypted_data_key FROM config_info WHERE "
+                + "gmt_modified >= ? and id > ? order by id  limit ? ";
+        return new MapperResult(sql,
+            CollectionUtils.list(context.getWhereParameter(FieldConstant.START_TIME),
                 context.getWhereParameter(FieldConstant.LAST_MAX_ID),
                 context.getWhereParameter(FieldConstant.PAGE_SIZE)));
     }
@@ -164,7 +176,9 @@ public interface ConfigInfoMapper extends Mapper {
      * @param context The map of params, the key is the parameter name(dataId, groupId, tenantId, appName, startTime,
      *                endTime, content), the value is the key's value.
      * @return The sql of getting the count of config information.
+     * @deprecated Unused by current datasource flows; kept temporarily for plugin compatibility.
      */
+    @Deprecated
     default MapperResult findChangeConfigCountRows(MapperContext context) {
         final String tenant = (String) context.getWhereParameter(FieldConstant.TENANT);
         final String dataId = (String) context.getWhereParameter(FieldConstant.DATA_ID);
@@ -214,7 +228,9 @@ public interface ConfigInfoMapper extends Mapper {
      * @param context The map of params, the key is the parameter name(dataId, groupId, tenantId, appName, startTime,
      *                endTime, content, startTime, endTime), the value is the key's value.
      * @return The sql of getting config information according to the time period.
+     * @deprecated Unused by current datasource flows; kept temporarily for plugin compatibility.
      */
+    @Deprecated
     MapperResult findChangeConfigFetchRows(MapperContext context);
     
     /**
@@ -224,7 +240,9 @@ public interface ConfigInfoMapper extends Mapper {
      *
      * @param context The context of startRow, pageSize
      * @return The sql of listing group key md5 by page.
+     * @deprecated Unused by current datasource flows; kept temporarily for plugin compatibility.
      */
+    @Deprecated
     MapperResult listGroupKeyMd5ByPageFetchRows(MapperContext context);
     
     /**
@@ -239,7 +257,8 @@ public interface ConfigInfoMapper extends Mapper {
     default MapperResult findAllConfigInfo4Export(MapperContext context) {
         List<Long> ids = (List<Long>) context.getWhereParameter(FieldConstant.IDS);
         
-        String sql = "SELECT id,data_id,group_id,tenant_id,app_name,content,type,md5,gmt_create,gmt_modified,"
+        String sql =
+            "SELECT id,data_id,group_id,tenant_id,app_name,content,type,md5,gmt_create,gmt_modified,"
                 + "src_user,src_ip,c_desc,c_use,effect,c_schema,encrypted_data_key FROM config_info";
         StringBuilder where = new StringBuilder(" WHERE ");
         
@@ -254,6 +273,11 @@ public interface ConfigInfoMapper extends Mapper {
                 paramList.add(ids.get(i));
             }
             where.append(") ");
+            Object tenantId = context.getWhereParameter(FieldConstant.TENANT_ID);
+            if (tenantId != null) {
+                where.append(" AND tenant_id = ? ");
+                paramList.add(tenantId);
+            }
         } else {
             where.append(" tenant_id = ? ");
             paramList.add(context.getWhereParameter(FieldConstant.TENANT_ID));
@@ -263,7 +287,7 @@ public interface ConfigInfoMapper extends Mapper {
             String appName = (String) context.getWhereParameter(FieldConstant.APP_NAME);
             
             if (StringUtils.isNotBlank(dataId)) {
-                where.append(" AND data_id LIKE ? ");
+                where.append(" AND data_id LIKE ? ").append(getLikeEscapeClause());
                 paramList.add(dataId);
             }
             if (StringUtils.isNotBlank(group)) {
@@ -284,7 +308,9 @@ public interface ConfigInfoMapper extends Mapper {
      * @param context The map of params, the key is the parameter name(dataId, groupId, tenant_id, content), the value
      *                is the arbitrary object.
      * @return The sql of getting the count of config information.
+     * @deprecated Unused by current datasource flows; kept temporarily for plugin compatibility.
      */
+    @Deprecated
     default MapperResult findConfigInfoBaseLikeCountRows(MapperContext context) {
         final String dataId = (String) context.getWhereParameter(FieldConstant.DATA_ID);
         final String group = (String) context.getWhereParameter(FieldConstant.GROUP_ID);
@@ -316,7 +342,9 @@ public interface ConfigInfoMapper extends Mapper {
      * @param context The map of params, the key is the parameter name(dataId, groupId, tenant_id, content), the value
      *                is the key's value.
      * @return The sql of getting the config information.
+     * @deprecated Unused by current datasource flows; kept temporarily for plugin compatibility.
      */
+    @Deprecated
     MapperResult findConfigInfoBaseLikeFetchRows(MapperContext context);
     
     /**
@@ -371,7 +399,9 @@ public interface ConfigInfoMapper extends Mapper {
      *
      * @param context The context of startRow, pageSize
      * @return Query configuration information based on group.
+     * @deprecated Unused by current datasource flows; kept temporarily for plugin compatibility.
      */
+    @Deprecated
     MapperResult findConfigInfoBaseByGroupFetchRows(MapperContext context);
     
     /**
@@ -390,18 +420,19 @@ public interface ConfigInfoMapper extends Mapper {
         
         WhereBuilder where = new WhereBuilder("SELECT count(*) FROM config_info");
         
-        where.like("tenant_id", tenantId);
+        String escapeClause = getLikeEscapeClause();
+        where.like("tenant_id", tenantId, escapeClause);
         if (StringUtils.isNotBlank(dataId)) {
-            where.and().like("data_id", dataId);
+            where.and().like("data_id", dataId, escapeClause);
         }
         if (StringUtils.isNotBlank(group)) {
-            where.and().like("group_id", group);
+            where.and().like("group_id", group, escapeClause);
         }
         if (StringUtils.isNotBlank(appName)) {
             where.and().eq("app_name", appName);
         }
         if (StringUtils.isNotBlank(content)) {
-            where.and().like("content", content);
+            where.and().like("content", content, escapeClause);
         }
         if (!ArrayUtils.isEmpty(types)) {
             where.and().in("type", types);
@@ -425,7 +456,9 @@ public interface ConfigInfoMapper extends Mapper {
      *
      * @param context The context of startRow, pageSize
      * @return Query all configuration information by page.
+     * @deprecated Unused by current datasource flows; kept temporarily for plugin compatibility.
      */
+    @Deprecated
     MapperResult findAllConfigInfoFetchRows(MapperContext context);
     
     /**
@@ -438,7 +471,7 @@ public interface ConfigInfoMapper extends Mapper {
     default MapperResult findConfigInfosByIds(MapperContext context) {
         List<Long> ids = (List<Long>) context.getWhereParameter(FieldConstant.IDS);
         StringBuilder sql = new StringBuilder(
-                "SELECT id,data_id,group_id,tenant_id,app_name,content,md5 FROM config_info WHERE ");
+            "SELECT id,data_id,group_id,tenant_id,app_name,content,md5 FROM config_info WHERE ");
         sql.append("id IN (");
         ArrayList<Object> paramList = new ArrayList<>();
         
@@ -487,7 +520,8 @@ public interface ConfigInfoMapper extends Mapper {
     default MapperResult updateConfigInfoAtomicCas(MapperContext context) {
         List<Object> paramList = new ArrayList<>();
         
-        StringBuilder sql = new StringBuilder("UPDATE config_info SET content=?, md5=?, src_ip=?, src_user=?, gmt_modified=");
+        StringBuilder sql = new StringBuilder(
+            "UPDATE config_info SET content=?, md5=?, src_ip=?, src_user=?, gmt_modified=");
         sql.append(getFunction("NOW()"));
         sql.append(", app_name=?");
         
@@ -510,7 +544,8 @@ public interface ConfigInfoMapper extends Mapper {
         paramList.add(context.getUpdateParameter(FieldConstant.C_SCHEMA));
         paramList.add(context.getUpdateParameter(FieldConstant.ENCRYPTED_DATA_KEY));
         
-        sql.append(" WHERE data_id=? AND group_id=? AND tenant_id=? AND (md5=? OR md5 IS NULL OR md5='')");
+        sql.append(
+            " WHERE data_id=? AND group_id=? AND tenant_id=? AND (md5=? OR md5 IS NULL OR md5='')");
         paramList.add(context.getWhereParameter(FieldConstant.DATA_ID));
         paramList.add(context.getWhereParameter(FieldConstant.GROUP_ID));
         paramList.add(context.getWhereParameter(FieldConstant.TENANT_ID));

@@ -16,9 +16,12 @@
 
 package com.alibaba.nacos.client.utils;
 
+import com.alibaba.nacos.api.utils.json.JsonUtils;
 import org.junit.jupiter.api.Test;
 
 import java.util.concurrent.TimeUnit;
+
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 class PreInitUtilsTest {
     
@@ -30,5 +33,17 @@ class PreInitUtilsTest {
         // No exception is ok.
         // Let async thread run completed
         TimeUnit.SECONDS.sleep(2);
+    }
+    
+    @Test
+    void testPreLoadCostComponent() {
+        PreInitUtils.preLoadCostComponent();
+        
+        assertNotNull(JsonUtils.selectedAdapterName());
+    }
+    
+    @Test
+    void testConstructor() {
+        assertNotNull(new PreInitUtils());
     }
 }

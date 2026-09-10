@@ -146,14 +146,21 @@ import java.util.stream.Collectors;
 @Conditional(ConditionDistributedEmbedStorage.class)
 @Component
 @SuppressWarnings({"unchecked"})
-public class DistributedDatabaseOperateImpl extends RequestProcessor4CP implements BaseDatabaseOperate {
+public class DistributedDatabaseOperateImpl extends RequestProcessor4CP
+    implements BaseDatabaseOperate {
     
-    private static final Logger LOGGER = LoggerFactory.getLogger(DistributedDatabaseOperateImpl.class);
+    private static final Logger LOGGER =
+        LoggerFactory.getLogger(DistributedDatabaseOperateImpl.class);
     
     /**
      * The data import operation is dedicated key, which ACTS as an identifier.
      */
     private static final String DATA_IMPORT_KEY = "00--0-data_import-0--00";
+    
+    private static final Map<String, Class<?>> BASIC_RESULT_TYPES = Map.of(
+        Integer.class.getCanonicalName(), Integer.class,
+        Long.class.getCanonicalName(), Long.class,
+        String.class.getCanonicalName(), String.class);
     
     private final ServerMemberManager memberManager;
     
@@ -175,8 +182,9 @@ public class DistributedDatabaseOperateImpl extends RequestProcessor4CP implemen
     
     private final SqlLimiter sqlLimiter;
     
-    public DistributedDatabaseOperateImpl(ServerMemberManager memberManager, ProtocolManager protocolManager)
-            throws Exception {
+    public DistributedDatabaseOperateImpl(ServerMemberManager memberManager,
+        ProtocolManager protocolManager)
+        throws Exception {
         this.memberManager = memberManager;
         this.protocol = protocolManager.getCpProtocol();
         init();
@@ -185,7 +193,8 @@ public class DistributedDatabaseOperateImpl extends RequestProcessor4CP implemen
     
     protected void init() throws Exception {
         
-        this.dataSourceService = (LocalDataSourceServiceImpl) DynamicDataSource.getInstance().getDataSource();
+        this.dataSourceService =
+            (LocalDataSourceServiceImpl) DynamicDataSource.getInstance().getDataSource();
         
         // Because in Raft + Derby mode, ensuring data consistency depends on the Raft's
         // log playback and snapshot recovery capabilities, and the last data must be cleared
@@ -200,6 +209,7 @@ public class DistributedDatabaseOperateImpl extends RequestProcessor4CP implemen
         NotifyCenter.registerToSharePublisher(DerbyLoadEvent.class);
         
         NotifyCenter.registerSubscriber(new Subscriber<RaftDbErrorEvent>() {
+            
             @Override
             public void onEvent(RaftDbErrorEvent event) {
                 dataSourceService.setHealthStatus("DOWN");
@@ -226,14 +236,16 @@ public class DistributedDatabaseOperateImpl extends RequestProcessor4CP implemen
             LoggerUtils.printIfDebugEnabled(LOGGER, "queryOne info : sql : {}", sql);
             
             byte[] data = serializer.serialize(
-                    SelectRequest.builder().queryType(QueryType.QUERY_ONE_NO_MAPPER_NO_ARGS).sql(sql)
-                            .className(cls.getCanonicalName()).build());
+                SelectRequest.builder().queryType(QueryType.QUERY_ONE_NO_MAPPER_NO_ARGS).sql(sql)
+                    .className(cls.getCanonicalName()).build());
             
             final boolean blockRead = EmbeddedStorageContextHolder
-                    .containsExtendInfo(PersistenceConstant.EXTEND_NEED_READ_UNTIL_HAVE_DATA);
+                .containsExtendInfo(PersistenceConstant.EXTEND_NEED_READ_UNTIL_HAVE_DATA);
             
             Response response = innerRead(
-                    ReadRequest.newBuilder().setGroup(group()).setData(ByteString.copyFrom(data)).build(), blockRead);
+                ReadRequest.newBuilder().setGroup(group()).setData(ByteString.copyFrom(data))
+                    .build(),
+                blockRead);
             if (response.getSuccess()) {
                 return serializer.deserialize(response.getData().toByteArray(), cls);
             }
@@ -247,17 +259,21 @@ public class DistributedDatabaseOperateImpl extends RequestProcessor4CP implemen
     @Override
     public <R> R queryOne(String sql, Object[] args, Class<R> cls) {
         try {
-            LoggerUtils.printIfDebugEnabled(LOGGER, "queryOne info : sql : {}, args : {}", sql, args);
+            LoggerUtils.printIfDebugEnabled(LOGGER, "queryOne info : sql : {}, args : {}", sql,
+                args);
             
             byte[] data = serializer.serialize(
-                    SelectRequest.builder().queryType(QueryType.QUERY_ONE_NO_MAPPER_WITH_ARGS).sql(sql).args(args)
-                            .className(cls.getCanonicalName()).build());
+                SelectRequest.builder().queryType(QueryType.QUERY_ONE_NO_MAPPER_WITH_ARGS).sql(sql)
+                    .args(args)
+                    .className(cls.getCanonicalName()).build());
             
             final boolean blockRead = EmbeddedStorageContextHolder
-                    .containsExtendInfo(PersistenceConstant.EXTEND_NEED_READ_UNTIL_HAVE_DATA);
+                .containsExtendInfo(PersistenceConstant.EXTEND_NEED_READ_UNTIL_HAVE_DATA);
             
             Response response = innerRead(
-                    ReadRequest.newBuilder().setGroup(group()).setData(ByteString.copyFrom(data)).build(), blockRead);
+                ReadRequest.newBuilder().setGroup(group()).setData(ByteString.copyFrom(data))
+                    .build(),
+                blockRead);
             if (response.getSuccess()) {
                 return serializer.deserialize(response.getData().toByteArray(), cls);
             }
@@ -271,20 +287,24 @@ public class DistributedDatabaseOperateImpl extends RequestProcessor4CP implemen
     @Override
     public <R> R queryOne(String sql, Object[] args, RowMapper<R> mapper) {
         try {
-            LoggerUtils.printIfDebugEnabled(LOGGER, "queryOne info : sql : {}, args : {}", sql, args);
+            LoggerUtils.printIfDebugEnabled(LOGGER, "queryOne info : sql : {}, args : {}", sql,
+                args);
             
             byte[] data = serializer.serialize(
-                    SelectRequest.builder().queryType(QueryType.QUERY_ONE_WITH_MAPPER_WITH_ARGS).sql(sql).args(args)
-                            .className(mapper.getClass().getCanonicalName()).build());
+                SelectRequest.builder().queryType(QueryType.QUERY_ONE_WITH_MAPPER_WITH_ARGS)
+                    .sql(sql).args(args)
+                    .className(mapper.getClass().getCanonicalName()).build());
             
             final boolean blockRead = EmbeddedStorageContextHolder
-                    .containsExtendInfo(PersistenceConstant.EXTEND_NEED_READ_UNTIL_HAVE_DATA);
+                .containsExtendInfo(PersistenceConstant.EXTEND_NEED_READ_UNTIL_HAVE_DATA);
             
             Response response = innerRead(
-                    ReadRequest.newBuilder().setGroup(group()).setData(ByteString.copyFrom(data)).build(), blockRead);
+                ReadRequest.newBuilder().setGroup(group()).setData(ByteString.copyFrom(data))
+                    .build(),
+                blockRead);
             if (response.getSuccess()) {
                 return serializer.deserialize(response.getData().toByteArray(),
-                        ClassUtils.resolveGenericTypeByInterface(mapper.getClass()));
+                    ClassUtils.resolveGenericTypeByInterface(mapper.getClass()));
             }
             throw new NJdbcException(response.getErrMsg(), response.getErrMsg());
         } catch (Exception e) {
@@ -296,17 +316,21 @@ public class DistributedDatabaseOperateImpl extends RequestProcessor4CP implemen
     @Override
     public <R> List<R> queryMany(String sql, Object[] args, RowMapper<R> mapper) {
         try {
-            LoggerUtils.printIfDebugEnabled(LOGGER, "queryMany info : sql : {}, args : {}", sql, args);
+            LoggerUtils.printIfDebugEnabled(LOGGER, "queryMany info : sql : {}, args : {}", sql,
+                args);
             
             byte[] data = serializer.serialize(
-                    SelectRequest.builder().queryType(QueryType.QUERY_MANY_WITH_MAPPER_WITH_ARGS).sql(sql).args(args)
-                            .className(mapper.getClass().getCanonicalName()).build());
+                SelectRequest.builder().queryType(QueryType.QUERY_MANY_WITH_MAPPER_WITH_ARGS)
+                    .sql(sql).args(args)
+                    .className(mapper.getClass().getCanonicalName()).build());
             
             final boolean blockRead = EmbeddedStorageContextHolder
-                    .containsExtendInfo(PersistenceConstant.EXTEND_NEED_READ_UNTIL_HAVE_DATA);
+                .containsExtendInfo(PersistenceConstant.EXTEND_NEED_READ_UNTIL_HAVE_DATA);
             
             Response response = innerRead(
-                    ReadRequest.newBuilder().setGroup(group()).setData(ByteString.copyFrom(data)).build(), blockRead);
+                ReadRequest.newBuilder().setGroup(group()).setData(ByteString.copyFrom(data))
+                    .build(),
+                blockRead);
             if (response.getSuccess()) {
                 return serializer.deserialize(response.getData().toByteArray(), List.class);
             }
@@ -320,17 +344,21 @@ public class DistributedDatabaseOperateImpl extends RequestProcessor4CP implemen
     @Override
     public <R> List<R> queryMany(String sql, Object[] args, Class<R> rClass) {
         try {
-            LoggerUtils.printIfDebugEnabled(LOGGER, "queryMany info : sql : {}, args : {}", sql, args);
+            LoggerUtils.printIfDebugEnabled(LOGGER, "queryMany info : sql : {}, args : {}", sql,
+                args);
             
             byte[] data = serializer.serialize(
-                    SelectRequest.builder().queryType(QueryType.QUERY_MANY_NO_MAPPER_WITH_ARGS).sql(sql).args(args)
-                            .className(rClass.getCanonicalName()).build());
+                SelectRequest.builder().queryType(QueryType.QUERY_MANY_NO_MAPPER_WITH_ARGS).sql(sql)
+                    .args(args)
+                    .className(rClass.getCanonicalName()).build());
             
             final boolean blockRead = EmbeddedStorageContextHolder
-                    .containsExtendInfo(PersistenceConstant.EXTEND_NEED_READ_UNTIL_HAVE_DATA);
+                .containsExtendInfo(PersistenceConstant.EXTEND_NEED_READ_UNTIL_HAVE_DATA);
             
             Response response = innerRead(
-                    ReadRequest.newBuilder().setGroup(group()).setData(ByteString.copyFrom(data)).build(), blockRead);
+                ReadRequest.newBuilder().setGroup(group()).setData(ByteString.copyFrom(data))
+                    .build(),
+                blockRead);
             if (response.getSuccess()) {
                 return serializer.deserialize(response.getData().toByteArray(), List.class);
             }
@@ -344,17 +372,21 @@ public class DistributedDatabaseOperateImpl extends RequestProcessor4CP implemen
     @Override
     public List<Map<String, Object>> queryMany(String sql, Object[] args) {
         try {
-            LoggerUtils.printIfDebugEnabled(LOGGER, "queryMany info : sql : {}, args : {}", sql, args);
+            LoggerUtils.printIfDebugEnabled(LOGGER, "queryMany info : sql : {}, args : {}", sql,
+                args);
             
             byte[] data = serializer.serialize(
-                    SelectRequest.builder().queryType(QueryType.QUERY_MANY_WITH_LIST_WITH_ARGS).sql(sql).args(args)
-                            .build());
+                SelectRequest.builder().queryType(QueryType.QUERY_MANY_WITH_LIST_WITH_ARGS).sql(sql)
+                    .args(args)
+                    .build());
             
             final boolean blockRead = EmbeddedStorageContextHolder
-                    .containsExtendInfo(PersistenceConstant.EXTEND_NEED_READ_UNTIL_HAVE_DATA);
+                .containsExtendInfo(PersistenceConstant.EXTEND_NEED_READ_UNTIL_HAVE_DATA);
             
             Response response = innerRead(
-                    ReadRequest.newBuilder().setGroup(group()).setData(ByteString.copyFrom(data)).build(), blockRead);
+                ReadRequest.newBuilder().setGroup(group()).setData(ByteString.copyFrom(data))
+                    .build(),
+                blockRead);
             if (response.getSuccess()) {
                 return serializer.deserialize(response.getData().toByteArray(), List.class);
             }
@@ -395,11 +427,11 @@ public class DistributedDatabaseOperateImpl extends RequestProcessor4CP implemen
                     boolean submit = batchUpdate.size() == batchSize || !iterator.hasNext();
                     if (submit) {
                         List<ModifyRequest> requests = batchUpdate.stream().map(ModifyRequest::new)
-                                .collect(Collectors.toList());
+                            .collect(Collectors.toList());
                         CompletableFuture<Response> future = protocol.writeAsync(
-                                WriteRequest.newBuilder().setGroup(group())
-                                        .setData(ByteString.copyFrom(serializer.serialize(requests)))
-                                        .putExtendInfo(DATA_IMPORT_KEY, Boolean.TRUE.toString()).build());
+                            WriteRequest.newBuilder().setGroup(group())
+                                .setData(ByteString.copyFrom(serializer.serialize(requests)))
+                                .putExtendInfo(DATA_IMPORT_KEY, Boolean.TRUE.toString()).build());
                         futures.add(future);
                         batchUpdate.clear();
                     }
@@ -432,12 +464,13 @@ public class DistributedDatabaseOperateImpl extends RequestProcessor4CP implemen
             // {timestamp}-{group}-{ip:port}-{signature}
             
             final String key =
-                    System.currentTimeMillis() + "-" + group() + "-" + memberManager.getSelf().getAddress() + "-"
-                            + MD5Utils.md5Hex(sqlContext.toString(), PersistenceConstant.DEFAULT_ENCODE);
+                System.currentTimeMillis() + "-" + group() + "-"
+                    + memberManager.getSelf().getAddress() + "-"
+                    + MD5Utils.md5Hex(sqlContext.toString(), PersistenceConstant.DEFAULT_ENCODE);
             WriteRequest request = WriteRequest.newBuilder().setGroup(group()).setKey(key)
-                    .setData(ByteString.copyFrom(serializer.serialize(sqlContext)))
-                    .putAllExtendInfo(EmbeddedStorageContextHolder.getCurrentExtendInfo())
-                    .setType(sqlContext.getClass().getCanonicalName()).build();
+                .setData(ByteString.copyFrom(serializer.serialize(sqlContext)))
+                .putAllExtendInfo(EmbeddedStorageContextHolder.getCurrentExtendInfo())
+                .setType(sqlContext.getClass().getCanonicalName()).build();
             if (Objects.isNull(consumer)) {
                 Response response = this.protocol.write(request);
                 if (response.getSuccess()) {
@@ -446,11 +479,13 @@ public class DistributedDatabaseOperateImpl extends RequestProcessor4CP implemen
                 LOGGER.error("execute sql modify operation failed : {}", response.getErrMsg());
                 return false;
             } else {
-                this.protocol.writeAsync(request).whenComplete((BiConsumer<Response, Throwable>) (response, ex) -> {
-                    String errMsg = Objects.isNull(ex) ? response.getErrMsg() : ExceptionUtil.getCause(ex).getMessage();
-                    consumer.accept(response.getSuccess(),
+                this.protocol.writeAsync(request)
+                    .whenComplete((BiConsumer<Response, Throwable>) (response, ex) -> {
+                        String errMsg = Objects.isNull(ex) ? response.getErrMsg()
+                            : ExceptionUtil.getCause(ex).getMessage();
+                        consumer.accept(response.getSuccess(),
                             StringUtils.isBlank(errMsg) ? null : new NJdbcException(errMsg));
-                });
+                    });
             }
             return true;
         } catch (TimeoutException e) {
@@ -474,45 +509,68 @@ public class DistributedDatabaseOperateImpl extends RequestProcessor4CP implemen
         readLock.lock();
         Object data;
         try {
-            selectRequest = serializer.deserialize(request.getData().toByteArray(), SelectRequest.class);
-            LoggerUtils.printIfDebugEnabled(LOGGER, "getData info : selectRequest : {}", selectRequest);
+            selectRequest =
+                serializer.deserialize(request.getData().toByteArray(), SelectRequest.class);
+            LoggerUtils.printIfDebugEnabled(LOGGER, "getData info : selectRequest : {}",
+                selectRequest);
             sqlLimiter.doLimitForSelectRequest(selectRequest);
-            final RowMapper<Object> mapper = RowMapperManager.getRowMapper(selectRequest.getClassName());
             final byte type = selectRequest.getQueryType();
             switch (type) {
                 case QueryType.QUERY_ONE_WITH_MAPPER_WITH_ARGS:
-                    data = queryOne(jdbcTemplate, selectRequest.getSql(), selectRequest.getArgs(), mapper);
+                    data = queryOne(jdbcTemplate, selectRequest.getSql(), selectRequest.getArgs(),
+                        getRequiredRowMapper(selectRequest.getClassName()));
                     break;
                 case QueryType.QUERY_ONE_NO_MAPPER_NO_ARGS:
                     data = queryOne(jdbcTemplate, selectRequest.getSql(),
-                            ClassUtils.findClassByName(selectRequest.getClassName()));
+                        getBasicResultType(selectRequest.getClassName()));
                     break;
                 case QueryType.QUERY_ONE_NO_MAPPER_WITH_ARGS:
                     data = queryOne(jdbcTemplate, selectRequest.getSql(), selectRequest.getArgs(),
-                            ClassUtils.findClassByName(selectRequest.getClassName()));
+                        getBasicResultType(selectRequest.getClassName()));
                     break;
                 case QueryType.QUERY_MANY_WITH_MAPPER_WITH_ARGS:
-                    data = queryMany(jdbcTemplate, selectRequest.getSql(), selectRequest.getArgs(), mapper);
+                    data = queryMany(jdbcTemplate, selectRequest.getSql(), selectRequest.getArgs(),
+                        getRequiredRowMapper(selectRequest.getClassName()));
                     break;
                 case QueryType.QUERY_MANY_WITH_LIST_WITH_ARGS:
                     data = queryMany(jdbcTemplate, selectRequest.getSql(), selectRequest.getArgs());
                     break;
                 case QueryType.QUERY_MANY_NO_MAPPER_WITH_ARGS:
                     data = queryMany(jdbcTemplate, selectRequest.getSql(), selectRequest.getArgs(),
-                            ClassUtils.findClassByName(selectRequest.getClassName()));
+                        getBasicResultType(selectRequest.getClassName()));
                     break;
                 default:
                     throw new IllegalArgumentException("Unsupported data query categories");
             }
-            ByteString bytes = data == null ? ByteString.EMPTY : ByteString.copyFrom(serializer.serialize(data));
+            ByteString bytes =
+                data == null ? ByteString.EMPTY : ByteString.copyFrom(serializer.serialize(data));
             return Response.newBuilder().setSuccess(true).setData(bytes).build();
         } catch (Exception e) {
-            LOGGER.error("There was an error querying the data, request : {}, error : {}", selectRequest, e.toString());
+            LOGGER.error("There was an error querying the data, request : {}, error : {}",
+                selectRequest, e.toString());
             return Response.newBuilder().setSuccess(false)
-                    .setErrMsg(ClassUtils.getSimplaName(e) + ":" + ExceptionUtil.getCause(e).getMessage()).build();
+                .setErrMsg(
+                    ClassUtils.getSimplaName(e) + ":" + ExceptionUtil.getCause(e).getMessage())
+                .build();
         } finally {
             readLock.unlock();
         }
+    }
+    
+    private RowMapper<Object> getRequiredRowMapper(String className) {
+        RowMapper<Object> result = RowMapperManager.getRowMapper(className);
+        if (result == null) {
+            throw new IllegalArgumentException("Unregistered row mapper");
+        }
+        return result;
+    }
+    
+    private Class<?> getBasicResultType(String className) {
+        Class<?> result = className == null ? null : BASIC_RESULT_TYPES.get(className);
+        if (result == null) {
+            throw new IllegalArgumentException("Unsupported basic result type");
+        }
+        return result;
     }
     
     @Override
@@ -523,7 +581,8 @@ public class DistributedDatabaseOperateImpl extends RequestProcessor4CP implemen
         final Lock lock = readLock;
         lock.lock();
         try {
-            List<ModifyRequest> sqlContext = serializer.deserialize(byteString.toByteArray(), List.class);
+            List<ModifyRequest> sqlContext =
+                serializer.deserialize(byteString.toByteArray(), List.class);
             sqlLimiter.doLimitForModifyRequest(sqlContext);
             boolean isOk = false;
             if (log.containsExtendInfo(DATA_IMPORT_KEY)) {
@@ -535,7 +594,8 @@ public class DistributedDatabaseOperateImpl extends RequestProcessor4CP implemen
                 // Put into the asynchronous thread pool for processing to avoid blocking the
                 // normal execution of the state machine
                 PersistenceExecutor.executeEmbeddedDump(() -> {
-                    for (EmbeddedApplyHook each : EmbeddedApplyHookHolder.getInstance().getAllHooks()) {
+                    for (EmbeddedApplyHook each : EmbeddedApplyHookHolder.getInstance()
+                        .getAllHooks()) {
                         each.afterApply(log);
                     }
                 });

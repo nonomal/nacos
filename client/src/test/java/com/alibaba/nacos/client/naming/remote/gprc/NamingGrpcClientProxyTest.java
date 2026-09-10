@@ -58,13 +58,13 @@ import com.alibaba.nacos.common.remote.client.RpcClient;
 import com.alibaba.nacos.common.remote.client.RpcClientConfig;
 import com.alibaba.nacos.common.remote.client.RpcClientFactory;
 import com.alibaba.nacos.common.remote.client.ServerListFactory;
-import com.alibaba.nacos.common.remote.client.grpc.GrpcClient;
 import com.alibaba.nacos.common.remote.client.grpc.GrpcClientConfig;
 import com.alibaba.nacos.common.remote.client.grpc.GrpcConstants;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.MockedStatic;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -127,9 +127,13 @@ class NamingGrpcClientProxyTest {
     @Mock
     private RpcClient rpcClient;
     
+    private MockedStatic<RpcClientFactory> rpcClientFactoryMockedStatic;
+    
     private Properties prop;
     
     private NamingGrpcClientProxy client;
+    
+    private GrpcClientConfig capturedGrpcClientConfig;
     
     private Response response;
     
@@ -143,24 +147,35 @@ class NamingGrpcClientProxyTest {
     void setUp() throws NacosException, NoSuchFieldException, IllegalAccessException {
         System.setProperty(GrpcConstants.GRPC_RETRY_TIMES, "1");
         System.setProperty(GrpcConstants.GRPC_SERVER_CHECK_TIMEOUT, "100");
-        List<String> serverList = Stream.of(ORIGIN_SERVER, "anotherServer").collect(Collectors.toList());
+        rpcClientFactoryMockedStatic =
+            Mockito.mockStatic(RpcClientFactory.class, Mockito.CALLS_REAL_METHODS);
+        rpcClientFactoryMockedStatic
+            .when(() -> RpcClientFactory.createClient(Mockito.anyString(),
+                Mockito.eq(ConnectionType.GRPC), Mockito.any(GrpcClientConfig.class)))
+            .thenAnswer(invocation -> {
+                String clientName = invocation.getArgument(0);
+                capturedGrpcClientConfig = invocation.getArgument(2);
+                capturedGrpcClientConfig.setName(clientName);
+                cacheRpcClient(clientName, rpcClient);
+                return rpcClient;
+            });
+        List<String> serverList =
+            Stream.of(ORIGIN_SERVER, "anotherServer").collect(Collectors.toList());
         when(factory.getServerList()).thenReturn(serverList);
         when(factory.genNextServer()).thenReturn(ORIGIN_SERVER);
         prop = new Properties();
         
-        final NacosClientProperties nacosClientProperties = NacosClientProperties.PROTOTYPE.derive(prop);
-        client = new NamingGrpcClientProxy(NAMESPACE_ID, proxy, factory, nacosClientProperties, holder,
-                namingFuzzyWatchServiceListHolder);
+        final NacosClientProperties nacosClientProperties =
+            NacosClientProperties.PROTOTYPE.derive(prop);
+        client = new NamingGrpcClientProxy(NAMESPACE_ID, proxy, factory, nacosClientProperties,
+            holder,
+            namingFuzzyWatchServiceListHolder);
         
         Field uuidField = NamingGrpcClientProxy.class.getDeclaredField("uuid");
         uuidField.setAccessible(true);
         uuid = (String) uuidField.get(client);
         
         assertNotNull(RpcClientFactory.getClient(uuid));
-        Field rpcClientField = NamingGrpcClientProxy.class.getDeclaredField("rpcClient");
-        rpcClientField.setAccessible(true);
-        ((RpcClient) rpcClientField.get(client)).shutdown();
-        rpcClientField.set(client, this.rpcClient);
         
         response = new InstanceResponse();
         when(this.rpcClient.request(any())).thenReturn(response);
@@ -180,7 +195,21 @@ class NamingGrpcClientProxyTest {
     void tearDown() throws NacosException {
         System.clearProperty(GrpcConstants.GRPC_RETRY_TIMES);
         System.clearProperty(GrpcConstants.GRPC_SERVER_CHECK_TIMEOUT);
-        client.shutdown();
+        if (client != null) {
+            client.shutdown();
+        }
+        if (rpcClientFactoryMockedStatic != null) {
+            rpcClientFactoryMockedStatic.close();
+        }
+    }
+    
+    @SuppressWarnings("unchecked")
+    private void cacheRpcClient(String clientName, RpcClient rpcClient)
+        throws NoSuchFieldException, IllegalAccessException {
+        Field field = RpcClientFactory.class.getDeclaredField("CLIENT_MAP");
+        field.setAccessible(true);
+        Map<String, RpcClient> map = (Map<String, RpcClient>) field.get(RpcClientFactory.class);
+        map.put(clientName, rpcClient);
     }
     
     @Test
@@ -211,7 +240,8 @@ class NamingGrpcClientProxyTest {
     void testRegisterServiceThrowsNacosException() throws NacosException {
         Throwable exception = assertThrows(NacosException.class, () -> {
             
-            when(this.rpcClient.request(Mockito.any())).thenReturn(ErrorResponse.build(400, "err args"));
+            when(this.rpcClient.request(Mockito.any()))
+                .thenReturn(ErrorResponse.build(400, "err args"));
             
             try {
                 client.registerService(SERVICE_NAME, GROUP_NAME, instance);
@@ -286,7 +316,7 @@ class NamingGrpcClientProxyTest {
                 BatchInstanceRequest request1 = (BatchInstanceRequest) request;
                 request1.setRequestId("1");
                 return request1.getInstances().size() == 1 && request1.getType()
-                        .equals(NamingRemoteConstants.BATCH_REGISTER_INSTANCE);
+                    .equals(NamingRemoteConstants.BATCH_REGISTER_INSTANCE);
             }
             return false;
         }));
@@ -373,7 +403,7 @@ class NamingGrpcClientProxyTest {
                 BatchInstanceRequest request1 = (BatchInstanceRequest) request;
                 request1.setRequestId("1");
                 return request1.getInstances().size() == 1 && request1.getType()
-                        .equals(NamingRemoteConstants.BATCH_REGISTER_INSTANCE);
+                    .equals(NamingRemoteConstants.BATCH_REGISTER_INSTANCE);
             }
             return false;
         }));
@@ -403,7 +433,7 @@ class NamingGrpcClientProxyTest {
                 BatchInstanceRequest request1 = (BatchInstanceRequest) request;
                 request1.setRequestId("1");
                 return request1.getInstances().size() == 2 && request1.getType()
-                        .equals(NamingRemoteConstants.BATCH_REGISTER_INSTANCE);
+                    .equals(NamingRemoteConstants.BATCH_REGISTER_INSTANCE);
             }
             return false;
         }));
@@ -421,7 +451,8 @@ class NamingGrpcClientProxyTest {
         ServiceInfo info = new ServiceInfo(GROUP_NAME + "@@" + SERVICE_NAME + "@@" + CLUSTERS);
         res.setServiceInfo(info);
         when(this.rpcClient.request(any())).thenReturn(res);
-        ServiceInfo actual = client.queryInstancesOfService(SERVICE_NAME, GROUP_NAME, CLUSTERS, false);
+        ServiceInfo actual =
+            client.queryInstancesOfService(SERVICE_NAME, GROUP_NAME, CLUSTERS, false);
         assertEquals(info, actual);
     }
     
@@ -501,8 +532,10 @@ class NamingGrpcClientProxyTest {
                 SubscribeServiceRequest request1 = (SubscribeServiceRequest) request;
                 
                 // verify request fields
-                return !request1.isSubscribe() && SERVICE_NAME.equals(request1.getServiceName()) && GROUP_NAME.equals(
-                        request1.getGroupName()) && CLUSTERS.equals(request1.getClusters()) && NAMESPACE_ID.equals(
+                return !request1.isSubscribe() && SERVICE_NAME.equals(request1.getServiceName())
+                    && GROUP_NAME.equals(
+                        request1.getGroupName())
+                    && CLUSTERS.equals(request1.getClusters()) && NAMESPACE_ID.equals(
                         request1.getNamespace());
             }
             return false;
@@ -529,34 +562,46 @@ class NamingGrpcClientProxyTest {
     
     @Test
     void testIsAbilitySupportedByServer1() {
-        when(this.rpcClient.getConnectionAbility(AbilityKey.SERVER_PERSISTENT_INSTANCE_BY_GRPC)).thenReturn(
+        when(this.rpcClient.getConnectionAbility(AbilityKey.SERVER_PERSISTENT_INSTANCE_BY_GRPC))
+            .thenReturn(
                 AbilityStatus.SUPPORTED);
-        assertTrue(client.isAbilitySupportedByServer(AbilityKey.SERVER_PERSISTENT_INSTANCE_BY_GRPC));
-        verify(this.rpcClient, times(1)).getConnectionAbility(AbilityKey.SERVER_PERSISTENT_INSTANCE_BY_GRPC);
+        assertTrue(
+            client.isAbilitySupportedByServer(AbilityKey.SERVER_PERSISTENT_INSTANCE_BY_GRPC));
+        verify(this.rpcClient, times(1))
+            .getConnectionAbility(AbilityKey.SERVER_PERSISTENT_INSTANCE_BY_GRPC);
     }
     
     @Test
     void testIsAbilitySupportedByServer2() {
-        when(this.rpcClient.getConnectionAbility(AbilityKey.SERVER_PERSISTENT_INSTANCE_BY_GRPC)).thenReturn(
+        when(this.rpcClient.getConnectionAbility(AbilityKey.SERVER_PERSISTENT_INSTANCE_BY_GRPC))
+            .thenReturn(
                 AbilityStatus.NOT_SUPPORTED);
-        assertFalse(client.isAbilitySupportedByServer(AbilityKey.SERVER_PERSISTENT_INSTANCE_BY_GRPC));
-        verify(this.rpcClient, times(1)).getConnectionAbility(AbilityKey.SERVER_PERSISTENT_INSTANCE_BY_GRPC);
+        assertFalse(
+            client.isAbilitySupportedByServer(AbilityKey.SERVER_PERSISTENT_INSTANCE_BY_GRPC));
+        verify(this.rpcClient, times(1))
+            .getConnectionAbility(AbilityKey.SERVER_PERSISTENT_INSTANCE_BY_GRPC);
     }
     
     @Test
     void testIsAbilitySupportedByServer3() {
-        when(this.rpcClient.getConnectionAbility(AbilityKey.SERVER_PERSISTENT_INSTANCE_BY_GRPC)).thenReturn(
+        when(this.rpcClient.getConnectionAbility(AbilityKey.SERVER_PERSISTENT_INSTANCE_BY_GRPC))
+            .thenReturn(
                 AbilityStatus.UNKNOWN);
-        assertFalse(client.isAbilitySupportedByServer(AbilityKey.SERVER_PERSISTENT_INSTANCE_BY_GRPC));
-        verify(this.rpcClient, times(1)).getConnectionAbility(AbilityKey.SERVER_PERSISTENT_INSTANCE_BY_GRPC);
+        assertFalse(
+            client.isAbilitySupportedByServer(AbilityKey.SERVER_PERSISTENT_INSTANCE_BY_GRPC));
+        verify(this.rpcClient, times(1))
+            .getConnectionAbility(AbilityKey.SERVER_PERSISTENT_INSTANCE_BY_GRPC);
     }
     
     @Test
     void testIsAbilitySupportedByServer4() {
-        when(this.rpcClient.getConnectionAbility(AbilityKey.SERVER_PERSISTENT_INSTANCE_BY_GRPC)).thenReturn(
+        when(this.rpcClient.getConnectionAbility(AbilityKey.SERVER_PERSISTENT_INSTANCE_BY_GRPC))
+            .thenReturn(
                 null);
-        assertFalse(client.isAbilitySupportedByServer(AbilityKey.SERVER_PERSISTENT_INSTANCE_BY_GRPC));
-        verify(this.rpcClient, times(1)).getConnectionAbility(AbilityKey.SERVER_PERSISTENT_INSTANCE_BY_GRPC);
+        assertFalse(
+            client.isAbilitySupportedByServer(AbilityKey.SERVER_PERSISTENT_INSTANCE_BY_GRPC));
+        verify(this.rpcClient, times(1))
+            .getConnectionAbility(AbilityKey.SERVER_PERSISTENT_INSTANCE_BY_GRPC);
     }
     
     @Test
@@ -567,7 +612,8 @@ class NamingGrpcClientProxyTest {
     }
     
     @Test
-    void testShutdownWithException() throws NoSuchFieldException, IllegalAccessException, NacosException {
+    void testShutdownWithException()
+        throws NoSuchFieldException, IllegalAccessException, NacosException {
         Field field = RpcClientFactory.class.getDeclaredField("CLIENT_MAP");
         field.setAccessible(true);
         Map<String, RpcClient> map = (Map<String, RpcClient>) field.get(RpcClientFactory.class);
@@ -591,6 +637,7 @@ class NamingGrpcClientProxyTest {
     void testServerListChanged() throws Exception {
         
         RpcClient rpc = new RpcClient(new RpcClientConfig() {
+            
             @Override
             public String name() {
                 return "testServerListHasChanged";
@@ -626,6 +673,7 @@ class NamingGrpcClientProxyTest {
                 return new HashMap<>();
             }
         }, factory) {
+            
             @Override
             public ConnectionType getConnectionType() {
                 return ConnectionType.GRPC;
@@ -641,7 +689,8 @@ class NamingGrpcClientProxyTest {
                 return new Connection(serverInfo) {
                     
                     @Override
-                    public Response request(Request request, long timeoutMills) throws NacosException {
+                    public Response request(Request request, long timeoutMills)
+                        throws NacosException {
                         Response response = new Response() {
                         };
                         response.setRequestId(request.getRequestId());
@@ -654,8 +703,9 @@ class NamingGrpcClientProxyTest {
                     }
                     
                     @Override
-                    public void asyncRequest(Request request, RequestCallBack requestCallBack) throws NacosException {
-                    
+                    public void asyncRequest(Request request, RequestCallBack requestCallBack)
+                        throws NacosException {
+                        
                     }
                     
                     @Override
@@ -674,59 +724,56 @@ class NamingGrpcClientProxyTest {
         listenerField.setAccessible(true);
         NamingGrpcRedoService listener = (NamingGrpcRedoService) listenerField.get(client);
         rpc.registerConnectionListener(listener);
-        rpc.start();
-        int retry = 10;
-        while (!rpc.isRunning()) {
-            TimeUnit.MILLISECONDS.sleep(200);
-            if (--retry < 0) {
-                fail("rpc is not running");
+        try {
+            rpc.start();
+            int retry = 10;
+            while (!rpc.isRunning()) {
+                TimeUnit.MILLISECONDS.sleep(200);
+                if (--retry < 0) {
+                    fail("rpc is not running");
+                }
             }
-        }
-        
-        assertEquals(ORIGIN_SERVER, rpc.getCurrentServer().getServerIp());
-        
-        String newServer = "www.aliyun.com";
-        when(factory.genNextServer()).thenReturn(newServer);
-        when(factory.getServerList()).thenReturn(Stream.of(newServer, "anotherServer").collect(Collectors.toList()));
-        NotifyCenter.publishEvent(new ServerListChangeEvent());
-        
-        retry = 10;
-        while (ORIGIN_SERVER.equals(rpc.getCurrentServer().getServerIp())) {
-            TimeUnit.MILLISECONDS.sleep(200);
-            if (--retry < 0) {
-                fail("failed to auth switch server");
+            
+            assertEquals(ORIGIN_SERVER, rpc.getCurrentServer().getServerIp());
+            
+            String newServer = "www.aliyun.com";
+            when(factory.genNextServer()).thenReturn(newServer);
+            when(factory.getServerList())
+                .thenReturn(Stream.of(newServer, "anotherServer").collect(Collectors.toList()));
+            NotifyCenter.publishEvent(new ServerListChangeEvent());
+            
+            retry = 10;
+            while (ORIGIN_SERVER.equals(rpc.getCurrentServer().getServerIp())) {
+                TimeUnit.MILLISECONDS.sleep(200);
+                if (--retry < 0) {
+                    fail("failed to auth switch server");
+                }
             }
+            
+            assertEquals(newServer, rpc.getCurrentServer().getServerIp());
+        } finally {
+            rpc.shutdown();
         }
-        
-        assertEquals(newServer, rpc.getCurrentServer().getServerIp());
     }
     
     @Test
-    void testConfigAppNameLabels() throws Exception {
-        final NacosClientProperties nacosClientProperties = NacosClientProperties.PROTOTYPE.derive(prop);
-        client = new NamingGrpcClientProxy(NAMESPACE_ID, proxy, factory, nacosClientProperties, holder,
-                namingFuzzyWatchServiceListHolder);
-        Field rpcClientField = NamingGrpcClientProxy.class.getDeclaredField("rpcClient");
-        rpcClientField.setAccessible(true);
-        RpcClient rpcClient = (RpcClient) rpcClientField.get(client);
-        Field clientConfig = GrpcClient.class.getDeclaredField("clientConfig");
-        clientConfig.setAccessible(true);
-        GrpcClientConfig config = (GrpcClientConfig) clientConfig.get(rpcClient);
-        String appName = config.labels().get(Constants.APPNAME);
+    void testConfigAppNameLabels() {
+        String appName = capturedGrpcClientConfig.labels().get(Constants.APPNAME);
         assertNotNull(appName);
     }
     
     @Test
     void testResponseCode403Exception() throws NacosException {
         Throwable exception = assertThrows(NacosException.class, () -> {
-
-            when(this.rpcClient.request(Mockito.any())).thenReturn(ErrorResponse.build(403, "Invalid signature"));
-
+            
+            when(this.rpcClient.request(Mockito.any()))
+                .thenReturn(ErrorResponse.build(403, "Invalid signature"));
+            
             try {
                 client.registerService(SERVICE_NAME, GROUP_NAME, instance);
             } catch (NacosException ex) {
                 assertNull(ex.getCause());
-
+                
                 throw ex;
             }
         });

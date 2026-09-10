@@ -59,6 +59,7 @@ class RemoteServerMemberManagerTest {
         cachedEnvironment = EnvUtil.getEnvironment();
         MockEnvironment environment = new MockEnvironment();
         environment.setProperty(Constants.Auth.NACOS_CORE_AUTH_ADMIN_ENABLED, "false");
+        environment.setProperty("nacos.member.list", "127.0.0.1:8848");
         EnvUtil.setEnvironment(environment);
         memberManager = new RemoteServerMemberManager();
     }
@@ -114,7 +115,8 @@ class RemoteServerMemberManagerTest {
             memberManager.memberChange(Collections.singleton(member));
             
             // 验证事件发布
-            ArgumentCaptor<MembersChangeEvent> eventCaptor = ArgumentCaptor.forClass(MembersChangeEvent.class);
+            ArgumentCaptor<MembersChangeEvent> eventCaptor =
+                ArgumentCaptor.forClass(MembersChangeEvent.class);
             notifyCenter.verify(() -> NotifyCenter.publishEvent(eventCaptor.capture()));
             
             MembersChangeEvent event = eventCaptor.getValue();

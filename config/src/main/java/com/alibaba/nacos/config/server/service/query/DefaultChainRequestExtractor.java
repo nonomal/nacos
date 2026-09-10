@@ -46,7 +46,8 @@ public class DefaultChainRequestExtractor implements ConfigQueryChainRequestExtr
     public ConfigQueryChainRequest extract(HttpServletRequest request) {
         final String dataId = request.getParameter("dataId");
         final String group = request.getParameter("group");
-        String tenant = request.getParameter("namespaceId") != null ? request.getParameter("namespaceId") : request.getParameter("tenant");
+        String tenant = request.getParameter("namespaceId") != null
+            ? request.getParameter("namespaceId") : request.getParameter("tenant");
         if (StringUtils.isBlank(tenant)) {
             tenant = StringUtils.EMPTY;
         }
@@ -67,6 +68,11 @@ public class DefaultChainRequestExtractor implements ConfigQueryChainRequestExtr
         chainRequest.setGroup(group);
         chainRequest.setTenant(tenant);
         chainRequest.setTag(tag);
+        // Note: localMd5 is intentionally NOT extracted from HTTP requests.
+        // HTTP conditional GET (304) is not part of this change; adding localMd5 here
+        // without updating HTTP response handling would cause formal config matches to
+        // return CONFIG_NOT_MODIFIED with null content, which ConfigServletInner treats
+        // as 404. gRPC/Java SDK conditional GET is handled through the gRPC extractor below.
         chainRequest.setAppLabels(appLabels);
         
         return chainRequest;
@@ -89,6 +95,7 @@ public class DefaultChainRequestExtractor implements ConfigQueryChainRequestExtr
         chainRequest.setGroup(request.getGroup());
         chainRequest.setTenant(request.getTenant());
         chainRequest.setTag(request.getTag());
+        chainRequest.setLocalMd5(request.getLocalMd5());
         chainRequest.setAppLabels(appLabels);
         
         return chainRequest;

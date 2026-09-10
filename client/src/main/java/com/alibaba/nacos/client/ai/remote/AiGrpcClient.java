@@ -18,20 +18,39 @@ package com.alibaba.nacos.client.ai.remote;
 
 import com.alibaba.nacos.api.ability.constant.AbilityKey;
 import com.alibaba.nacos.api.ability.constant.AbilityStatus;
+import com.alibaba.nacos.api.ability.register.impl.SdkClientAbilities;
 import com.alibaba.nacos.api.ai.constant.AiConstants;
 import com.alibaba.nacos.api.ai.model.a2a.AgentCard;
 import com.alibaba.nacos.api.ai.model.a2a.AgentCardDetailInfo;
 import com.alibaba.nacos.api.ai.model.a2a.AgentEndpoint;
+import com.alibaba.nacos.api.ai.model.a2a.AgentInterface;
+import com.alibaba.nacos.api.ai.model.agent.ClientLivenessInfo;
+import com.alibaba.nacos.api.ai.model.agent.AgentPublishRequest;
+import com.alibaba.nacos.api.ai.model.agent.AgentVersionDetail;
 import com.alibaba.nacos.api.ai.model.mcp.McpEndpointSpec;
+import com.alibaba.nacos.api.ai.model.mcp.McpResourceSpecification;
 import com.alibaba.nacos.api.ai.model.mcp.McpServerBasicInfo;
 import com.alibaba.nacos.api.ai.model.mcp.McpServerDetailInfo;
 import com.alibaba.nacos.api.ai.model.mcp.McpToolSpecification;
 import com.alibaba.nacos.api.ai.model.prompt.Prompt;
+import com.alibaba.nacos.api.ai.model.rad.AgentCatalogEntry;
+import com.alibaba.nacos.api.ai.model.rad.AgentDiscoveryRequest;
+import com.alibaba.nacos.api.ai.model.rad.AgentDiscoveryResult;
+import com.alibaba.nacos.api.ai.model.rad.AgentEndpointRegistrationBatch;
+import com.alibaba.nacos.api.ai.model.rad.AgentSearchRequest;
 import com.alibaba.nacos.api.ai.remote.AiRemoteConstants;
+import com.alibaba.nacos.api.ai.remote.request.AbstractAgentClientRpcRequest;
 import com.alibaba.nacos.api.ai.remote.request.AbstractAgentRequest;
 import com.alibaba.nacos.api.ai.remote.request.AbstractMcpRequest;
 import com.alibaba.nacos.api.ai.remote.request.AbstractPromptRequest;
+import com.alibaba.nacos.api.ai.remote.request.AgentDiscoveryRpcRequest;
+import com.alibaba.nacos.api.ai.remote.request.AgentEndpointDeregisterRpcRequest;
+import com.alibaba.nacos.api.ai.remote.request.AgentEndpointRegisterRpcRequest;
+import com.alibaba.nacos.api.ai.remote.request.AgentPublishRpcRequest;
 import com.alibaba.nacos.api.ai.remote.request.AgentEndpointRequest;
+import com.alibaba.nacos.api.ai.remote.request.AgentSearchRpcRequest;
+import com.alibaba.nacos.api.ai.remote.request.AgentSubscribeRpcRequest;
+import com.alibaba.nacos.api.ai.remote.request.AgentUnsubscribeRpcRequest;
 import com.alibaba.nacos.api.ai.remote.request.BatchAgentEndpointRequest;
 import com.alibaba.nacos.api.ai.remote.request.McpServerEndpointRequest;
 import com.alibaba.nacos.api.ai.remote.request.QueryPromptRequest;
@@ -39,7 +58,13 @@ import com.alibaba.nacos.api.ai.remote.request.QueryAgentCardRequest;
 import com.alibaba.nacos.api.ai.remote.request.QueryMcpServerRequest;
 import com.alibaba.nacos.api.ai.remote.request.ReleaseAgentCardRequest;
 import com.alibaba.nacos.api.ai.remote.request.ReleaseMcpServerRequest;
+import com.alibaba.nacos.api.ai.remote.response.AgentDiscoveryResponse;
+import com.alibaba.nacos.api.ai.remote.response.AgentEndpointOperationResponse;
+import com.alibaba.nacos.api.ai.remote.response.AgentPublishRpcResponse;
 import com.alibaba.nacos.api.ai.remote.response.AgentEndpointResponse;
+import com.alibaba.nacos.api.ai.remote.response.AgentSearchResponse;
+import com.alibaba.nacos.api.ai.remote.response.AgentSubscribeRpcResponse;
+import com.alibaba.nacos.api.ai.remote.response.AgentUnsubscribeRpcResponse;
 import com.alibaba.nacos.api.ai.remote.response.McpServerEndpointResponse;
 import com.alibaba.nacos.api.ai.remote.response.QueryPromptResponse;
 import com.alibaba.nacos.api.ai.remote.response.QueryAgentCardResponse;
@@ -48,15 +73,20 @@ import com.alibaba.nacos.api.ai.remote.response.ReleaseAgentCardResponse;
 import com.alibaba.nacos.api.ai.remote.response.ReleaseMcpServerResponse;
 import com.alibaba.nacos.api.common.Constants;
 import com.alibaba.nacos.api.exception.NacosException;
+import com.alibaba.nacos.api.exception.api.NacosApiException;
 import com.alibaba.nacos.api.exception.runtime.NacosRuntimeException;
+import com.alibaba.nacos.api.model.Page;
+import com.alibaba.nacos.api.model.v2.ErrorCode;
 import com.alibaba.nacos.api.remote.RemoteConstants;
 import com.alibaba.nacos.api.remote.request.Request;
 import com.alibaba.nacos.api.remote.response.Response;
 import com.alibaba.nacos.api.remote.response.ResponseCode;
+import com.alibaba.nacos.api.utils.json.JsonUtils;
 import com.alibaba.nacos.client.address.AbstractServerListManager;
 import com.alibaba.nacos.client.ai.cache.NacosAgentCardCacheHolder;
 import com.alibaba.nacos.client.ai.cache.NacosMcpServerCacheHolder;
 import com.alibaba.nacos.client.ai.remote.redo.AgentEndpointWrapper;
+import com.alibaba.nacos.client.ai.remote.redo.AgentEndpointPublicationRedoData;
 import com.alibaba.nacos.client.ai.remote.redo.AiGrpcRedoService;
 import com.alibaba.nacos.client.env.NacosClientProperties;
 import com.alibaba.nacos.client.naming.core.NamingServerListManager;
@@ -65,9 +95,12 @@ import com.alibaba.nacos.client.security.SecurityProxy;
 import com.alibaba.nacos.client.utils.AppNameUtils;
 import com.alibaba.nacos.common.executor.NameThreadFactory;
 import com.alibaba.nacos.common.remote.ConnectionType;
+import com.alibaba.nacos.common.remote.client.InitialConnectionFailureListener;
+import com.alibaba.nacos.common.remote.client.ConnectionEventListener;
 import com.alibaba.nacos.common.remote.client.RpcClient;
 import com.alibaba.nacos.common.remote.client.RpcClientConfigFactory;
 import com.alibaba.nacos.common.remote.client.RpcClientFactory;
+import com.alibaba.nacos.common.remote.client.ServerRequestHandler;
 import com.alibaba.nacos.common.remote.client.grpc.GrpcClientConfig;
 import com.alibaba.nacos.common.utils.StringUtils;
 import com.alibaba.nacos.common.utils.ThreadUtils;
@@ -75,13 +108,16 @@ import com.alibaba.nacos.plugin.auth.api.RequestResource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.UUID;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 
 import static com.alibaba.nacos.client.constant.Constants.Security.SECURITY_INFO_REFRESH_INTERVAL_MILLS;
 
@@ -102,38 +138,131 @@ public class AiGrpcClient implements AiClientProxy {
     
     private final RpcClient rpcClient;
     
+    private final int retryTimes;
+    
     private final AbstractServerListManager serverListManager;
     
     private final AiGrpcRedoService redoService;
-
+    
     private final NacosClientProperties properties;
-
+    
+    private volatile Consumer<AgentEndpointRegistrationBatch> agentEndpointPublicationCapacityRejectedHandler =
+        batch -> {
+        };
+    
     private SecurityProxy securityProxy;
     
     private NacosMcpServerCacheHolder mcpServerCacheHolder;
     
     private NacosAgentCardCacheHolder agentCardCacheHolder;
-
+    
     private ScheduledThreadPoolExecutor executorService;
-
+    
     public AiGrpcClient(String namespaceId, NacosClientProperties properties) {
         this.namespaceId = namespaceId;
         this.uuid = UUID.randomUUID().toString();
-        this.requestTimeout = Long.parseLong(properties.getProperty(AiConstants.AI_REQUEST_TIMEOUT, "-1"));
-        this.rpcClient = buildRpcClient(properties);
+        this.requestTimeout =
+            Long.parseLong(properties.getProperty(AiConstants.AI_REQUEST_TIMEOUT, "-1"));
+        GrpcClientConfig grpcClientConfig = buildGrpcClientConfig(properties);
+        this.retryTimes = grpcClientConfig.retryTimes();
+        this.rpcClient = RpcClientFactory.createClient(uuid, ConnectionType.GRPC,
+            grpcClientConfig);
         this.serverListManager = new NamingServerListManager(properties, namespaceId);
         this.redoService = new AiGrpcRedoService(properties, this);
         this.properties = properties;
     }
     
-    private RpcClient buildRpcClient(NacosClientProperties properties) {
-        Map<String, String> labels = new HashMap<>(3);
+    /**
+     * Register the local publication-state cleanup invoked after an asynchronous quota reject.
+     *
+     * @param handler rejected publication cleanup
+     */
+    public void setAgentEndpointPublicationCapacityRejectedHandler(
+        Consumer<AgentEndpointRegistrationBatch> handler) {
+        this.agentEndpointPublicationCapacityRejectedHandler = handler;
+    }
+    
+    private GrpcClientConfig buildGrpcClientConfig(NacosClientProperties properties) {
+        Map<String, String> labels = new HashMap<>(4);
         labels.put(RemoteConstants.LABEL_SOURCE, RemoteConstants.LABEL_SOURCE_SDK);
         labels.put(RemoteConstants.LABEL_MODULE, RemoteConstants.LABEL_MODULE_AI);
         labels.put(Constants.APPNAME, AppNameUtils.getAppName());
-        GrpcClientConfig grpcClientConfig = RpcClientConfigFactory.getInstance()
-                .createGrpcClientConfig(properties.asProperties(), labels);
-        return RpcClientFactory.createClient(uuid, ConnectionType.GRPC, grpcClientConfig);
+        labels.put(AiRemoteConstants.LABEL_CLIENT_UUID, uuid);
+        return RpcClientConfigFactory.getInstance()
+            .createGrpcClientConfig(properties.asProperties(), labels);
+    }
+    
+    /**
+     * Register a listener for failed asynchronous initial gRPC connection attempts.
+     *
+     * @param listener initial connection failure listener
+     */
+    public void registerInitialConnectionFailureListener(
+        InitialConnectionFailureListener listener) {
+        rpcClient.registerInitialConnectionFailureListener(listener);
+    }
+    
+    /**
+     * Register one lifecycle listener on the shared AI gRPC connection.
+     *
+     * @param listener connection lifecycle listener
+     */
+    public void registerConnectionListener(ConnectionEventListener listener) {
+        rpcClient.registerConnectionListener(listener);
+    }
+    
+    /**
+     * Register one server-push handler on the shared AI gRPC connection.
+     *
+     * @param handler server request handler
+     */
+    public void registerServerRequestHandler(ServerRequestHandler handler) {
+        rpcClient.registerServerRequestHandler(handler);
+    }
+    
+    /**
+     * Return the configured gRPC retry count used as the AUTO initial probe budget.
+     *
+     * @return configured retry count
+     */
+    public int getRetryTimes() {
+        return retryTimes;
+    }
+    
+    /**
+     * Return the number of failed asynchronous initial connection attempts.
+     *
+     * @return failure count
+     */
+    public int getInitialConnectionFailureCount() {
+        return rpcClient.getInitialConnectionFailureCount();
+    }
+    
+    /**
+     * Pause background gRPC reconnect while this client has never connected.
+     *
+     * @return {@code true} when reconnect is suspended
+     */
+    public boolean suspendInitialReconnect() {
+        return rpcClient.suspendInitialReconnect();
+    }
+    
+    /**
+     * Resume a previously suspended initial gRPC reconnect.
+     *
+     * @return {@code true} when reconnect is resumed
+     */
+    public boolean resumeInitialReconnect() {
+        return rpcClient.resumeInitialReconnect();
+    }
+    
+    /**
+     * Check whether initial gRPC reconnect is suspended.
+     *
+     * @return {@code true} when suspended
+     */
+    public boolean isInitialReconnectSuspended() {
+        return rpcClient.isInitialReconnectSuspended();
     }
     
     /**
@@ -141,8 +270,9 @@ public class AiGrpcClient implements AiClientProxy {
      *
      * @throws NacosException nacos exception
      */
-    public void start(NacosMcpServerCacheHolder mcpServerCacheHolder, NacosAgentCardCacheHolder agentCardCacheHolder)
-            throws NacosException {
+    public void start(NacosMcpServerCacheHolder mcpServerCacheHolder,
+        NacosAgentCardCacheHolder agentCardCacheHolder)
+        throws NacosException {
         this.mcpServerCacheHolder = mcpServerCacheHolder;
         this.agentCardCacheHolder = agentCardCacheHolder;
         this.serverListManager.start();
@@ -150,17 +280,144 @@ public class AiGrpcClient implements AiClientProxy {
         this.rpcClient.serverListFactory(this.serverListManager);
         this.rpcClient.start();
         this.securityProxy = new SecurityProxy(this.serverListManager,
-                NamingHttpClientManager.getInstance().getNacosRestTemplate());
+            NamingHttpClientManager.getInstance().getNacosRestTemplate());
         initSecurityProxy(properties);
     }
-
+    
     private void initSecurityProxy(NacosClientProperties properties) {
         this.executorService = new ScheduledThreadPoolExecutor(1,
-                new NameThreadFactory("com.alibaba.nacos.client.ai.security"));
+            new NameThreadFactory("com.alibaba.nacos.client.ai.security"));
         final Properties nacosClientPropertiesView = properties.asProperties();
         this.securityProxy.login(nacosClientPropertiesView);
-        this.executorService.scheduleWithFixedDelay(() -> securityProxy.login(nacosClientPropertiesView), 0,
-                SECURITY_INFO_REFRESH_INTERVAL_MILLS, TimeUnit.MILLISECONDS);
+        this.executorService.scheduleWithFixedDelay(
+            () -> securityProxy.login(nacosClientPropertiesView), 0,
+            SECURITY_INFO_REFRESH_INTERVAL_MILLS, TimeUnit.MILLISECONDS);
+    }
+    
+    @Override
+    public AgentVersionDetail publishAgent(AgentPublishRequest request) throws NacosException {
+        checkServerAbilityStrict(AbilityKey.SERVER_RAD_V1, "RAD v1");
+        AgentPublishRpcRequest rpcRequest = new AgentPublishRpcRequest();
+        rpcRequest.setNamespaceId(namespaceId);
+        rpcRequest.setPublishRequest(request);
+        AgentPublishRpcResponse response =
+            requestToServer(rpcRequest, AgentPublishRpcResponse.class);
+        return response.getVersionDetail();
+    }
+    
+    @Override
+    public Page<AgentCatalogEntry> searchAgents(AgentSearchRequest request)
+        throws NacosException {
+        checkServerAbilityStrict(AbilityKey.SERVER_RAD_V1, "RAD v1");
+        AgentSearchRpcRequest rpcRequest = new AgentSearchRpcRequest();
+        rpcRequest.setSearchRequest(request);
+        AgentSearchResponse response =
+            requestToServer(rpcRequest, AgentSearchResponse.class);
+        return response.getPage();
+    }
+    
+    @Override
+    public AgentDiscoveryResult discoverAgent(AgentDiscoveryRequest request)
+        throws NacosException {
+        checkServerAbilityStrict(AbilityKey.SERVER_RAD_V1, "RAD v1");
+        AgentDiscoveryRpcRequest rpcRequest = new AgentDiscoveryRpcRequest();
+        rpcRequest.setDiscoveryRequest(request);
+        AgentDiscoveryResponse response =
+            requestToServer(rpcRequest, AgentDiscoveryResponse.class);
+        return response.getDiscoveryResult();
+    }
+    
+    /**
+     * Install one connection-owned RAD Watch.
+     *
+     * @param clientWatchId process-stable client Watch identifier
+     * @param discoveryRequest complete canonical discovery request
+     * @param materializedFingerprint last complete-result fingerprint
+     * @return wire Watch admission result
+     * @throws NacosException when ability negotiation or subscription fails
+     */
+    public AgentSubscribeRpcResponse subscribeAgentWatch(String clientWatchId,
+        AgentDiscoveryRequest discoveryRequest, String materializedFingerprint)
+        throws NacosException {
+        checkServerAbilityStrict(AbilityKey.SERVER_RAD_WATCH_V1, "RAD Watch v1");
+        AgentSubscribeRpcRequest request = new AgentSubscribeRpcRequest();
+        request.setClientWatchId(clientWatchId);
+        request.setDiscoveryRequest(discoveryRequest);
+        request.setMaterializedFingerprint(materializedFingerprint);
+        return requestToServer(request, AgentSubscribeRpcResponse.class);
+    }
+    
+    /**
+     * Remove one connection-owned RAD Watch.
+     *
+     * @param watchKey opaque connection-scoped Watch key
+     * @throws NacosException when ability negotiation or unsubscription fails
+     */
+    public void unsubscribeAgentWatch(String watchKey) throws NacosException {
+        checkServerAbilityStrict(AbilityKey.SERVER_RAD_WATCH_V1, "RAD Watch v1");
+        AgentUnsubscribeRpcRequest request = new AgentUnsubscribeRpcRequest();
+        request.setWatchKey(watchKey);
+        requestToServer(request, AgentUnsubscribeRpcResponse.class);
+    }
+    
+    /**
+     * Register one complete Agent Endpoint batch without changing its expected redo state.
+     *
+     * @param key publication key
+     * @param batch complete registration batch
+     * @throws NacosException when ability negotiation or the request fails
+     */
+    public void doRegisterAgentEndpoints(String key, AgentEndpointRegistrationBatch batch)
+        throws NacosException {
+        checkServerAbilityStrict(AbilityKey.SERVER_RAD_V1, "RAD v1");
+        AgentEndpointRegisterRpcRequest request = new AgentEndpointRegisterRpcRequest();
+        request.setRegistrationBatch(batch);
+        requestToServer(request, AgentEndpointOperationResponse.class);
+        redoService.agentEndpointPublicationRegistered(key);
+    }
+    
+    @Override
+    public void deregisterAgentEndpoints(String namespaceId, String agentName, String protocol)
+        throws NacosException {
+        checkServerAbilityStrict(AbilityKey.SERVER_RAD_V1, "RAD v1");
+        String key =
+            AgentEndpointPublicationRedoData.keyOf(namespaceId, agentName, protocol);
+        AgentEndpointRegistrationBatch previous =
+            redoService.getAgentEndpointPublication(key);
+        boolean previousRegistered =
+            redoService.isAgentEndpointPublicationRegistered(key);
+        redoService.agentEndpointPublicationDeregistering(key);
+        try {
+            doDeregisterAgentEndpoints(key, namespaceId, agentName, protocol);
+        } catch (NacosException e) {
+            restorePublicationAfterNonRetryableFailure(key, previous, previousRegistered, e);
+            throw e;
+        }
+    }
+    
+    /**
+     * Deregister one whole Agent Endpoint publication without changing its expected redo state.
+     *
+     * @param key publication key
+     * @param namespaceId effective namespace
+     * @param agentName Agent name
+     * @param protocol protocol token
+     * @throws NacosException when ability negotiation or the request fails
+     */
+    public void doDeregisterAgentEndpoints(String key, String namespaceId, String agentName,
+        String protocol) throws NacosException {
+        checkServerAbilityStrict(AbilityKey.SERVER_RAD_V1, "RAD v1");
+        AgentEndpointDeregisterRpcRequest request = new AgentEndpointDeregisterRpcRequest();
+        request.setNamespaceId(namespaceId);
+        request.setAgentName(agentName);
+        request.setProtocol(protocol);
+        requestToServer(request, AgentEndpointOperationResponse.class);
+        redoService.agentEndpointPublicationDeregistered(key);
+    }
+    
+    @Override
+    public ClientLivenessInfo heartbeatAgentEndpoints() {
+        return null;
     }
     
     /**
@@ -171,11 +428,9 @@ public class AiGrpcClient implements AiClientProxy {
      * @return mcp server detail info
      * @throws NacosException if request parameter is invalid or handle error
      */
-    public McpServerDetailInfo queryMcpServer(String mcpName, String version) throws NacosException {
-        if (!isAbilitySupportedByServer(AbilityKey.SERVER_MCP_REGISTRY)) {
-            throw new NacosRuntimeException(NacosException.SERVER_NOT_IMPLEMENTED,
-                    "Request Nacos server version is too low, not support mcp registry feature.");
-        }
+    public McpServerDetailInfo queryMcpServer(String mcpName, String version)
+        throws NacosException {
+        checkServerAbilityOrThrow(AbilityKey.SERVER_MCP_REGISTRY, "mcp registry");
         QueryMcpServerRequest request = new QueryMcpServerRequest();
         request.setNamespaceId(namespaceId);
         request.setMcpName(mcpName);
@@ -185,7 +440,7 @@ public class AiGrpcClient implements AiClientProxy {
     }
     
     /**
-     * Query prompt by latest/version/label.
+     * Query prompt by version/label/latest.
      *
      * @param promptKey prompt key
      * @param version prompt version, optional
@@ -193,12 +448,13 @@ public class AiGrpcClient implements AiClientProxy {
      * @return prompt detail
      * @throws NacosException if request parameter is invalid or handle error
      */
-    public Prompt queryPrompt(String promptKey, String version, String label) throws NacosException {
+    public Prompt queryPrompt(String promptKey, String version, String label)
+        throws NacosException {
         return queryPrompt(promptKey, version, label, null);
     }
     
     /**
-     * Query prompt by latest/version/label with optional md5.
+     * Query prompt by version/label/latest with optional md5.
      *
      * @param promptKey prompt key
      * @param version prompt version, optional
@@ -207,7 +463,8 @@ public class AiGrpcClient implements AiClientProxy {
      * @return prompt detail
      * @throws NacosException if request parameter is invalid or handle error
      */
-    public Prompt queryPrompt(String promptKey, String version, String label, String md5) throws NacosException {
+    public Prompt queryPrompt(String promptKey, String version, String label, String md5)
+        throws NacosException {
         QueryPromptRequest request = new QueryPromptRequest();
         request.setNamespaceId(namespaceId);
         request.setPromptKey(promptKey);
@@ -226,21 +483,63 @@ public class AiGrpcClient implements AiClientProxy {
      * @return mcp id
      * @throws NacosException if request parameter is invalid or handle error
      */
-    public String releaseMcpServer(McpServerBasicInfo serverSpecification, McpToolSpecification toolSpecification,
-            McpEndpointSpec endpointSpecification) throws NacosException {
+    public String releaseMcpServer(McpServerBasicInfo serverSpecification,
+        McpToolSpecification toolSpecification,
+        McpEndpointSpec endpointSpecification) throws NacosException {
+        return releaseMcpServer(serverSpecification, toolSpecification, null,
+            endpointSpecification, false);
+    }
+    
+    /**
+     * Release mcp server with explicit resource specification.
+     *
+     * @param serverSpecification mcp server specification
+     * @param toolSpecification mcp server tool specification, optional
+     * @param resourceSpecification mcp server resource specification, optional
+     * @param endpointSpecification mcp server endpoint specification, optional
+     * @return mcp id
+     * @throws NacosException if request parameter is invalid or handle error
+     */
+    public String releaseMcpServer(McpServerBasicInfo serverSpecification,
+        McpToolSpecification toolSpecification,
+        McpResourceSpecification resourceSpecification, McpEndpointSpec endpointSpecification)
+        throws NacosException {
+        return releaseMcpServer(serverSpecification, toolSpecification, resourceSpecification,
+            endpointSpecification, false);
+    }
+    
+    /**
+     * Release one MCP Version with an explicit lifecycle-draft choice.
+     *
+     * @param serverSpecification MCP Server specification
+     * @param toolSpecification optional Tool specification
+     * @param resourceSpecification optional Resource specification
+     * @param endpointSpecification optional Endpoint specification
+     * @param createDraft whether to create only a standard lifecycle draft
+     * @return internal MCP id
+     * @throws NacosException when ability negotiation or release fails
+     */
+    public String releaseMcpServer(McpServerBasicInfo serverSpecification,
+        McpToolSpecification toolSpecification,
+        McpResourceSpecification resourceSpecification, McpEndpointSpec endpointSpecification,
+        boolean createDraft) throws NacosException {
         LOGGER.info("[{}] RELEASE Mcp server {}, version {}", uuid, serverSpecification.getName(),
-                serverSpecification.getVersionDetail().getVersion());
-        if (!isAbilitySupportedByServer(AbilityKey.SERVER_MCP_REGISTRY)) {
-            throw new NacosRuntimeException(NacosException.SERVER_NOT_IMPLEMENTED,
-                    "Request Nacos server version is too low, not support mcp registry feature.");
+            serverSpecification.getVersionDetail().getVersion());
+        checkServerAbilityOrThrow(AbilityKey.SERVER_MCP_REGISTRY, "mcp registry");
+        if (createDraft) {
+            checkServerAbilityStrict(AbilityKey.SERVER_MCP_DRAFT_RELEASE,
+                "MCP lifecycle draft release");
         }
         ReleaseMcpServerRequest request = new ReleaseMcpServerRequest();
         request.setNamespaceId(namespaceId);
         request.setMcpName(serverSpecification.getName());
         request.setServerSpecification(serverSpecification);
         request.setToolSpecification(toolSpecification);
+        request.setResourceSpecification(resourceSpecification);
         request.setEndpointSpecification(endpointSpecification);
-        ReleaseMcpServerResponse response = requestToServer(request, ReleaseMcpServerResponse.class);
+        request.setCreateDraft(createDraft);
+        ReleaseMcpServerResponse response =
+            requestToServer(request, ReleaseMcpServerResponse.class);
         return response.getMcpId();
     }
     
@@ -254,13 +553,11 @@ public class AiGrpcClient implements AiClientProxy {
      * @throws NacosException if request parameter is invalid or handle error
      */
     public void registerMcpServerEndpoint(String mcpName, String address, int port, String version)
-            throws NacosException {
-        LOGGER.info("[{}] REGISTER Mcp server endpoint {}:{}, version {} into mcp server {}", uuid, address, port,
-                version, mcpName);
-        if (!isAbilitySupportedByServer(AbilityKey.SERVER_MCP_REGISTRY)) {
-            throw new NacosRuntimeException(NacosException.SERVER_NOT_IMPLEMENTED,
-                    "Request Nacos server version is too low, not support mcp registry feature.");
-        }
+        throws NacosException {
+        LOGGER.info("[{}] REGISTER Mcp server endpoint {}:{}, version {} into mcp server {}", uuid,
+            address, port,
+            version, mcpName);
+        checkServerAbilityOrThrow(AbilityKey.SERVER_MCP_REGISTRY, "mcp registry");
         redoService.cachedMcpServerEndpointForRedo(mcpName, address, port, version);
         doRegisterMcpServerEndpoint(mcpName, address, port, version);
     }
@@ -274,8 +571,9 @@ public class AiGrpcClient implements AiClientProxy {
      * @param version   version of mcp endpoint, if empty, the endpoint will return for all mcp version
      * @throws NacosException if request parameter is invalid or handle error
      */
-    public void doRegisterMcpServerEndpoint(String mcpName, String address, int port, String version)
-            throws NacosException {
+    public void doRegisterMcpServerEndpoint(String mcpName, String address, int port,
+        String version)
+        throws NacosException {
         McpServerEndpointRequest request = new McpServerEndpointRequest();
         request.setNamespaceId(namespaceId);
         request.setMcpName(mcpName);
@@ -295,12 +593,11 @@ public class AiGrpcClient implements AiClientProxy {
      * @param port      port of mcp endpoint
      * @throws NacosException if request parameter is invalid or handle error
      */
-    public void deregisterMcpServerEndpoint(String mcpName, String address, int port) throws NacosException {
-        LOGGER.info("[{}] DE-REGISTER Mcp server endpoint {}:{} from mcp server {}", uuid, address, port, mcpName);
-        if (!isAbilitySupportedByServer(AbilityKey.SERVER_MCP_REGISTRY)) {
-            throw new NacosRuntimeException(NacosException.SERVER_NOT_IMPLEMENTED,
-                    "Request Nacos server version is too low, not support mcp registry feature.");
-        }
+    public void deregisterMcpServerEndpoint(String mcpName, String address, int port)
+        throws NacosException {
+        LOGGER.info("[{}] DE-REGISTER Mcp server endpoint {}:{} from mcp server {}", uuid, address,
+            port, mcpName);
+        checkServerAbilityOrThrow(AbilityKey.SERVER_MCP_REGISTRY, "mcp registry");
         redoService.mcpServerEndpointDeregister(mcpName);
         doDeregisterMcpServerEndpoint(mcpName, address, port);
     }
@@ -313,7 +610,8 @@ public class AiGrpcClient implements AiClientProxy {
      * @param port      port of mcp endpoint
      * @throws NacosException if request parameter is invalid or handle error
      */
-    public void doDeregisterMcpServerEndpoint(String mcpName, String address, int port) throws NacosException {
+    public void doDeregisterMcpServerEndpoint(String mcpName, String address, int port)
+        throws NacosException {
         McpServerEndpointRequest request = new McpServerEndpointRequest();
         request.setNamespaceId(namespaceId);
         request.setMcpName(mcpName);
@@ -332,11 +630,9 @@ public class AiGrpcClient implements AiClientProxy {
      * @return latest version mcp server
      * @throws NacosException if request parameter is invalid or handle error
      */
-    public McpServerDetailInfo subscribeMcpServer(String mcpName, String version) throws NacosException {
-        if (!isAbilitySupportedByServer(AbilityKey.SERVER_MCP_REGISTRY)) {
-            throw new NacosRuntimeException(NacosException.SERVER_NOT_IMPLEMENTED,
-                    "Request Nacos server version is too low, not support mcp registry feature.");
-        }
+    public McpServerDetailInfo subscribeMcpServer(String mcpName, String version)
+        throws NacosException {
+        checkServerAbilityOrThrow(AbilityKey.SERVER_MCP_REGISTRY, "mcp registry");
         McpServerDetailInfo cachedServer = mcpServerCacheHolder.getMcpServer(mcpName, version);
         if (null == cachedServer) {
             try {
@@ -360,10 +656,7 @@ public class AiGrpcClient implements AiClientProxy {
      * @throws NacosException if request parameter is invalid or handle error
      */
     public void unsubscribeMcpServer(String mcpName, String version) throws NacosException {
-        if (!isAbilitySupportedByServer(AbilityKey.SERVER_MCP_REGISTRY)) {
-            throw new NacosRuntimeException(NacosException.SERVER_NOT_IMPLEMENTED,
-                    "Request Nacos server version is too low, not support mcp registry feature.");
-        }
+        checkServerAbilityOrThrow(AbilityKey.SERVER_MCP_REGISTRY, "mcp registry");
         mcpServerCacheHolder.removeMcpServerUpdateTask(mcpName, version);
     }
     
@@ -376,12 +669,10 @@ public class AiGrpcClient implements AiClientProxy {
      * @return agent card with nacos extension detail
      * @throws NacosException if request parameter is invalid or agent card not found or handle error
      */
-    public AgentCardDetailInfo getAgentCard(String agentName, String version, String registrationType)
-            throws NacosException {
-        if (!isAbilitySupportedByServer(AbilityKey.SERVER_AGENT_REGISTRY)) {
-            throw new NacosRuntimeException(NacosException.SERVER_NOT_IMPLEMENTED,
-                    "Request Nacos server version is too low, not support agent registry feature.");
-        }
+    public AgentCardDetailInfo getAgentCard(String agentName, String version,
+        String registrationType)
+        throws NacosException {
+        checkServerAbilityOrThrow(AbilityKey.SERVER_AGENT_REGISTRY, "agent registry");
         QueryAgentCardRequest request = new QueryAgentCardRequest();
         request.setNamespaceId(this.namespaceId);
         request.setAgentName(agentName);
@@ -408,12 +699,36 @@ public class AiGrpcClient implements AiClientProxy {
      * @throws NacosException if request parameter is invalid or handle error
      */
     public void releaseAgentCard(AgentCard agentCard, String registrationType, boolean setAsLatest)
-            throws NacosException {
-        LOGGER.info("[{}] Release Agent Card {}, version {}.", uuid, agentCard.getName(), agentCard.getVersion());
-        if (!isAbilitySupportedByServer(AbilityKey.SERVER_AGENT_REGISTRY)) {
-            throw new NacosRuntimeException(NacosException.SERVER_NOT_IMPLEMENTED,
-                    "Request Nacos server version is too low, not support agent registry feature.");
+        throws NacosException {
+        LOGGER.info("[{}] Release Agent Card {}, version {}.", uuid, agentCard.getName(),
+            agentCard.getVersion());
+        checkServerAbilityOrThrow(AbilityKey.SERVER_AGENT_REGISTRY, "agent registry");
+        AbilityStatus agentCardV1AbilityStatus =
+            rpcClient.getConnectionAbility(AbilityKey.SERVER_AGENT_CARD_V1);
+        if (AbilityStatus.NOT_SUPPORTED == agentCardV1AbilityStatus) {
+            doReleaseAgentCard(buildLegacyCompatibleAgentCard(agentCard), registrationType,
+                setAsLatest);
+            return;
         }
+        try {
+            doReleaseAgentCard(agentCard, registrationType, setAsLatest);
+        } catch (NacosException e) {
+            if (shouldRetryWithLegacyFormat(e)) {
+                LOGGER.info(
+                    "[{}] Retry release agent card {} with legacy fields for compatibility.",
+                    uuid,
+                    agentCard.getName());
+                doReleaseAgentCard(buildLegacyCompatibleAgentCard(agentCard), registrationType,
+                    setAsLatest);
+                return;
+            }
+            throw e;
+        }
+    }
+    
+    private void doReleaseAgentCard(AgentCard agentCard, String registrationType,
+        boolean setAsLatest)
+        throws NacosException {
         ReleaseAgentCardRequest request = new ReleaseAgentCardRequest();
         request.setNamespaceId(this.namespaceId);
         request.setAgentName(agentCard.getName());
@@ -430,14 +745,40 @@ public class AiGrpcClient implements AiClientProxy {
      * @param endpoint  agent endpoint
      * @throws NacosException if request parameter is invalid or handle error
      */
-    public void registerAgentEndpoint(String agentName, AgentEndpoint endpoint) throws NacosException {
-        LOGGER.info("[{}] REGISTER Agent endpoint {} into agent {}", uuid, endpoint.toString(), agentName);
-        if (!isAbilitySupportedByServer(AbilityKey.SERVER_AGENT_REGISTRY)) {
-            throw new NacosRuntimeException(NacosException.SERVER_NOT_IMPLEMENTED,
-                    "Request Nacos server version is too low, not support agent registry feature.");
-        }
+    public void registerAgentEndpoint(String agentName, AgentEndpoint endpoint)
+        throws NacosException {
+        LOGGER.info("[{}] REGISTER Agent endpoint {} into agent {}", uuid, endpoint.toString(),
+            agentName);
+        checkServerAbilityOrThrow(AbilityKey.SERVER_AGENT_REGISTRY, "agent registry");
         redoService.cachedAgentEndpointForRedo(agentName, AgentEndpointWrapper.wrap(endpoint));
         doRegisterAgentEndpoint(agentName, endpoint);
+    }
+    
+    /**
+     * Register one complete RAD Agent Endpoint publication.
+     *
+     * @param batch complete registration batch
+     * @return {@code null}; gRPC publication liveness follows the connection lifecycle
+     * @throws NacosException if request parameter is invalid or handle error
+     */
+    @Override
+    public ClientLivenessInfo registerAgentEndpoints(AgentEndpointRegistrationBatch batch)
+        throws NacosException {
+        checkServerAbilityStrict(AbilityKey.SERVER_RAD_V1, "RAD v1");
+        String key = AgentEndpointPublicationRedoData.keyOf(batch.getNamespaceId(),
+            batch.getAgentName(), batch.getProtocol());
+        AgentEndpointRegistrationBatch previous =
+            redoService.getAgentEndpointPublication(key);
+        boolean previousRegistered =
+            redoService.isAgentEndpointPublicationRegistered(key);
+        redoService.cacheAgentEndpointPublication(batch);
+        try {
+            doRegisterAgentEndpoints(key, batch);
+        } catch (NacosException e) {
+            restorePublicationAfterNonRetryableFailure(key, previous, previousRegistered, e);
+            throw e;
+        }
+        return null;
     }
     
     /**
@@ -447,12 +788,11 @@ public class AiGrpcClient implements AiClientProxy {
      * @param endpoints agent endpoints
      * @throws NacosException if request parameter is invalid or handle error
      */
-    public void registerAgentEndpoints(String agentName, Collection<AgentEndpoint> endpoints) throws NacosException {
-        LOGGER.info("[{}] BATCH REGISTER Agent endpoint size: {} into agent {}", uuid, endpoints.size(), agentName);
-        if (!isAbilitySupportedByServer(AbilityKey.SERVER_AGENT_REGISTRY)) {
-            throw new NacosRuntimeException(NacosException.SERVER_NOT_IMPLEMENTED,
-                    "Request Nacos server version is too low, not support agent registry feature.");
-        }
+    public void registerAgentEndpoints(String agentName, Collection<AgentEndpoint> endpoints)
+        throws NacosException {
+        LOGGER.info("[{}] BATCH REGISTER Agent endpoint size: {} into agent {}", uuid,
+            endpoints.size(), agentName);
+        checkServerAbilityOrThrow(AbilityKey.SERVER_AGENT_REGISTRY, "agent registry");
         redoService.cachedAgentEndpointForRedo(agentName, AgentEndpointWrapper.wrap(endpoints));
         doRegisterAgentEndpoint(agentName, endpoints);
     }
@@ -464,14 +804,15 @@ public class AiGrpcClient implements AiClientProxy {
      * @param endpoint  agent endpoint
      * @throws NacosException if request parameter is invalid or handle error
      */
-    public void doRegisterAgentEndpoint(String agentName, AgentEndpoint endpoint) throws NacosException {
+    public void doRegisterAgentEndpoint(String agentName, AgentEndpoint endpoint)
+        throws NacosException {
         AgentEndpointRequest request = new AgentEndpointRequest();
         request.setNamespaceId(this.namespaceId);
         request.setAgentName(agentName);
         request.setType(AiRemoteConstants.REGISTER_ENDPOINT);
         request.setEndpoint(endpoint);
         requestToServer(request, AgentEndpointResponse.class);
-        redoService.agentEndpointRegistered(agentName);
+        redoService.agentEndpointRegistered(agentName, endpoint.getVersion());
     }
     
     /**
@@ -481,13 +822,15 @@ public class AiGrpcClient implements AiClientProxy {
      * @param endpoints agent endpoints
      * @throws NacosException if request parameter is invalid or handle error
      */
-    public void doRegisterAgentEndpoint(String agentName, Collection<AgentEndpoint> endpoints) throws NacosException {
+    public void doRegisterAgentEndpoint(String agentName, Collection<AgentEndpoint> endpoints)
+        throws NacosException {
         BatchAgentEndpointRequest request = new BatchAgentEndpointRequest();
         request.setNamespaceId(this.namespaceId);
         request.setAgentName(agentName);
         request.setEndpoints(endpoints);
         requestToServer(request, AgentEndpointResponse.class);
-        redoService.agentEndpointRegistered(agentName);
+        redoService.agentEndpointRegistered(agentName,
+            endpoints.iterator().next().getVersion());
     }
     
     /**
@@ -497,13 +840,12 @@ public class AiGrpcClient implements AiClientProxy {
      * @param endpoint  agent endpoint
      * @throws NacosException if request parameter is invalid or handle error
      */
-    public void deregisterAgentEndpoint(String agentName, AgentEndpoint endpoint) throws NacosException {
-        LOGGER.info("[{}] DE-REGISTER agent endpoint {} from agent {}", uuid, endpoint.toString(), agentName);
-        if (!isAbilitySupportedByServer(AbilityKey.SERVER_AGENT_REGISTRY)) {
-            throw new NacosRuntimeException(NacosException.SERVER_NOT_IMPLEMENTED,
-                    "Request Nacos server version is too low, not support agent registry feature.");
-        }
-        redoService.agentEndpointDeregister(agentName);
+    public void deregisterAgentEndpoint(String agentName, AgentEndpoint endpoint)
+        throws NacosException {
+        LOGGER.info("[{}] DE-REGISTER agent endpoint {} from agent {}", uuid, endpoint.toString(),
+            agentName);
+        checkServerAbilityOrThrow(AbilityKey.SERVER_AGENT_REGISTRY, "agent registry");
+        redoService.agentEndpointDeregister(agentName, endpoint.getVersion());
         doDeregisterAgentEndpoint(agentName, endpoint);
     }
     
@@ -514,14 +856,15 @@ public class AiGrpcClient implements AiClientProxy {
      * @param endpoint  agent endpoint
      * @throws NacosException if request parameter is invalid or handle error
      */
-    public void doDeregisterAgentEndpoint(String agentName, AgentEndpoint endpoint) throws NacosException {
+    public void doDeregisterAgentEndpoint(String agentName, AgentEndpoint endpoint)
+        throws NacosException {
         AgentEndpointRequest request = new AgentEndpointRequest();
         request.setNamespaceId(this.namespaceId);
         request.setAgentName(agentName);
         request.setType(AiRemoteConstants.DE_REGISTER_ENDPOINT);
         request.setEndpoint(endpoint);
         requestToServer(request, AgentEndpointResponse.class);
-        redoService.agentEndpointDeregistered(agentName);
+        redoService.agentEndpointDeregistered(agentName, endpoint.getVersion());
     }
     
     /**
@@ -532,11 +875,9 @@ public class AiGrpcClient implements AiClientProxy {
      * @return current agent card
      * @throws NacosException if request parameter is invalid or handle error
      */
-    public AgentCardDetailInfo subscribeAgentCard(String agentName, String version) throws NacosException {
-        if (!isAbilitySupportedByServer(AbilityKey.SERVER_AGENT_REGISTRY)) {
-            throw new NacosRuntimeException(NacosException.SERVER_NOT_IMPLEMENTED,
-                    "Request Nacos server version is too low, not support agent registry feature.");
-        }
+    public AgentCardDetailInfo subscribeAgentCard(String agentName, String version)
+        throws NacosException {
+        checkServerAbilityOrThrow(AbilityKey.SERVER_AGENT_REGISTRY, "agent registry");
         AgentCardDetailInfo cachedAgentCard = agentCardCacheHolder.getAgentCard(agentName, version);
         if (null == cachedAgentCard) {
             try {
@@ -547,8 +888,8 @@ public class AiGrpcClient implements AiClientProxy {
                     throw e;
                 }
             }
-            agentCardCacheHolder.addAgentCardUpdateTask(agentName, version);
         }
+        agentCardCacheHolder.addAgentCardUpdateTask(agentName, version);
         return cachedAgentCard;
     }
     
@@ -560,10 +901,7 @@ public class AiGrpcClient implements AiClientProxy {
      * @throws NacosException if request parameter is invalid or handle error
      */
     public void unsubscribeAgentCard(String agentName, String version) throws NacosException {
-        if (!isAbilitySupportedByServer(AbilityKey.SERVER_AGENT_REGISTRY)) {
-            throw new NacosRuntimeException(NacosException.SERVER_NOT_IMPLEMENTED,
-                    "Request Nacos server version is too low, not support agent registry feature.");
-        }
+        checkServerAbilityOrThrow(AbilityKey.SERVER_AGENT_REGISTRY, "agent registry");
         agentCardCacheHolder.removeAgentCardUpdateTask(agentName, version);
     }
     
@@ -581,43 +919,236 @@ public class AiGrpcClient implements AiClientProxy {
         return rpcClient.getConnectionAbility(abilityKey) == AbilityStatus.SUPPORTED;
     }
     
-    private <T extends Response> T requestToServer(Request request, Class<T> responseClass) throws NacosException {
+    /**
+     * Check whether both sides negotiated the RAD Watch hint binding.
+     *
+     * @return {@code true} only for a running connection with both Watch abilities
+     */
+    public boolean isAgentWatchAvailable() {
+        return rpcClient.isRunning()
+            && Boolean.TRUE.equals(
+                SdkClientAbilities.getStaticAbilities().get(AbilityKey.SDK_RAD_WATCH_V1))
+            && isAbilitySupportedByServer(AbilityKey.SERVER_RAD_WATCH_V1);
+    }
+    
+    /**
+     * Return the identifier of the current shared AI gRPC connection.
+     *
+     * @return connection identifier, or {@code null} before connection establishment
+     */
+    public String getCurrentConnectionId() {
+        return rpcClient.getCurrentConnectionId();
+    }
+    
+    private void checkServerAbilityOrThrow(AbilityKey abilityKey, String featureName) {
+        if (!rpcClient.isRunning()) {
+            throw new NacosRuntimeException(NacosException.SERVER_ERROR,
+                String.format(
+                    "Request Nacos server failed: connection is unavailable, unable to determine %s "
+                        + "ability.",
+                    featureName),
+                new NacosException(NacosException.CLIENT_DISCONNECT,
+                    "AI gRPC connection is unavailable."));
+        }
+        AbilityStatus abilityStatus = rpcClient.getConnectionAbility(abilityKey);
+        if (AbilityStatus.SUPPORTED == abilityStatus) {
+            return;
+        }
+        if (AbilityStatus.NOT_SUPPORTED == abilityStatus) {
+            throw new NacosRuntimeException(NacosException.SERVER_NOT_IMPLEMENTED,
+                String.format("Request Nacos server does not support %s feature.",
+                    featureName));
+        }
+    }
+    
+    private void checkServerAbilityStrict(AbilityKey abilityKey, String featureName)
+        throws NacosException {
+        if (!rpcClient.isRunning()) {
+            throw new NacosException(NacosException.SERVER_ERROR,
+                "Request Nacos server failed: connection is unavailable, unable to determine "
+                    + featureName + " ability.");
+        }
+        AbilityStatus abilityStatus = rpcClient.getConnectionAbility(abilityKey);
+        if (AbilityStatus.SUPPORTED != abilityStatus) {
+            throw new NacosException(NacosException.SERVER_NOT_IMPLEMENTED,
+                "Request Nacos server does not support " + featureName + " feature.");
+        }
+    }
+    
+    private void restorePublicationAfterNonRetryableFailure(String key,
+        AgentEndpointRegistrationBatch previous, boolean previousRegistered,
+        NacosException exception) {
+        if (isPublicationCapacityRejected(exception)) {
+            redoService.discardAgentEndpointPublication(key);
+            if (previous == null) {
+                return;
+            }
+            agentEndpointPublicationCapacityRejectedHandler.accept(previous);
+            return;
+        }
+        if (exception.getErrCode() >= NacosException.SERVER_ERROR
+            || exception.getErrCode() == NacosException.HTTP_CLIENT_ERROR_CODE) {
+            return;
+        }
+        redoService.discardAgentEndpointPublication(key);
+        if (previous != null) {
+            redoService.cacheAgentEndpointPublication(previous);
+            if (previousRegistered) {
+                redoService.agentEndpointPublicationRegistered(key);
+            }
+        }
+    }
+    
+    private boolean isPublicationCapacityRejected(NacosException exception) {
+        return exception instanceof NacosApiException
+            && ((NacosApiException) exception)
+                .getDetailErrCode() == ErrorCode.AGENT_ENDPOINT_PUBLICATION_OVER_LIMIT.getCode();
+    }
+    
+    private boolean shouldRetryWithLegacyFormat(NacosException e) {
+        if (e.getErrCode() != NacosException.INVALID_PARAM) {
+            return false;
+        }
+        String errMsg = e.getErrMsg();
+        if (StringUtils.isEmpty(errMsg)) {
+            return false;
+        }
+        return errMsg.contains("agentCard.protocolVersion")
+            || errMsg.contains("agentCard.preferredTransport")
+            || errMsg.contains("agentCard.url");
+    }
+    
+    private AgentCard buildLegacyCompatibleAgentCard(AgentCard source) {
+        AgentCard result = JsonUtils.toObj(JsonUtils.toJson(source), AgentCard.class);
+        List<AgentInterface> supportedInterfaces = result.getSupportedInterfaces();
+        if (null != supportedInterfaces && !supportedInterfaces.isEmpty()) {
+            AgentInterface preferred = supportedInterfaces.get(0);
+            result.setUrl(preferred.getUrl());
+            result.setPreferredTransport(preferred.getProtocolBinding());
+            result.setProtocolVersion(preferred.getProtocolVersion());
+            if (supportedInterfaces.size() > 1) {
+                result.setAdditionalInterfaces(new ArrayList<>(
+                    supportedInterfaces.subList(1, supportedInterfaces.size())));
+            }
+        }
+        if (null != result.getCapabilities()
+            && null != result.getCapabilities().getExtendedAgentCard()) {
+            result.setSupportsAuthenticatedExtendedCard(
+                result.getCapabilities().getExtendedAgentCard());
+        }
+        return result;
+    }
+    
+    private <T extends Response> T requestToServer(Request request, Class<T> responseClass)
+        throws NacosException {
         Response response = null;
         try {
-            if (request instanceof AbstractMcpRequest) {
+            if (request instanceof AbstractAgentClientRpcRequest) {
+                AbstractAgentClientRpcRequest agentRequest =
+                    (AbstractAgentClientRpcRequest) request;
+                request.putAllHeader(getSecurityHeaders(agentRequest.extractNamespaceId(),
+                    agentRequest.extractAgentName()));
+            } else if (request instanceof AbstractMcpRequest) {
                 AbstractMcpRequest mcpRequest = (AbstractMcpRequest) request;
-                request.putAllHeader(getSecurityHeaders(mcpRequest.getNamespaceId(), mcpRequest.getMcpName()));
+                request.putAllHeader(
+                    getSecurityHeaders(mcpRequest.getNamespaceId(), mcpRequest.getMcpName()));
             } else if (request instanceof AbstractAgentRequest) {
                 AbstractAgentRequest agentRequest = (AbstractAgentRequest) request;
-                request.putAllHeader(getSecurityHeaders(agentRequest.getNamespaceId(), agentRequest.getAgentName()));
+                request.putAllHeader(getSecurityHeaders(agentRequest.getNamespaceId(),
+                    agentRequest.getAgentName()));
             } else if (request instanceof AbstractPromptRequest) {
                 AbstractPromptRequest promptRequest = (AbstractPromptRequest) request;
-                request.putAllHeader(getSecurityHeaders(promptRequest.getNamespaceId(), promptRequest.getPromptKey()));
+                request.putAllHeader(getSecurityHeaders(promptRequest.getNamespaceId(),
+                    promptRequest.getPromptKey()));
             } else {
                 throw new NacosException(400,
-                        String.format("Unknown AI request type: %s", request.getClass().getSimpleName()));
+                    String.format("Unknown AI request type: %s",
+                        request.getClass().getSimpleName()));
             }
             
-            response = requestTimeout < 0 ? rpcClient.request(request) : rpcClient.request(request, requestTimeout);
+            response = requestTimeout < 0 ? rpcClient.request(request)
+                : rpcClient.request(request, requestTimeout);
             if (ResponseCode.SUCCESS.getCode() != response.getResultCode()) {
                 // If the 403 login operation is triggered, refresh the accessToken of the client
-                if (NacosException.NO_RIGHT == response.getErrorCode()) {
+                int errorCode = request instanceof AbstractAgentClientRpcRequest
+                    ? mapAgentClientErrorCode(response.getErrorCode())
+                    : response.getErrorCode();
+                if (NacosException.NO_RIGHT == errorCode) {
                     securityProxy.reLogin();
                 }
-                throw new NacosException(response.getErrorCode(), response.getMessage());
+                if (response.getErrorCode() == ErrorCode.AGENT_ENDPOINT_PUBLICATION_OVER_LIMIT
+                    .getCode()) {
+                    throw new NacosApiException(errorCode,
+                        ErrorCode.AGENT_ENDPOINT_PUBLICATION_OVER_LIMIT,
+                        response.getMessage());
+                }
+                if (response.getErrorCode() == ErrorCode.AGENT_DISCOVERY_SUBSCRIPTION_OVER_LIMIT
+                    .getCode()) {
+                    throw new NacosApiException(errorCode,
+                        ErrorCode.AGENT_DISCOVERY_SUBSCRIPTION_OVER_LIMIT,
+                        response.getMessage());
+                }
+                throw new NacosException(errorCode, response.getMessage());
             }
             if (responseClass.isAssignableFrom(response.getClass())) {
                 return (T) response;
             }
             throw new NacosException(NacosException.SERVER_ERROR,
-                    String.format("Server return invalid response: %s", response.getClass().getSimpleName()));
+                String.format("Server return invalid response: %s",
+                    response.getClass().getSimpleName()));
         } catch (NacosException e) {
-            LOGGER.warn("AI request {} execute failed, {}", request.getClass().getSimpleName(), e.getMessage());
+            LOGGER.warn("AI request {} execute failed, {}", request.getClass().getSimpleName(),
+                e.getMessage());
             throw e;
         } catch (Exception e) {
             LOGGER.warn("AI request {} execute failed. ", request.getClass().getSimpleName(), e);
-            throw new NacosException(NacosException.SERVER_ERROR, "Request nacos server failed: ", e);
+            throw new NacosException(NacosException.SERVER_ERROR, "Request nacos server failed: ",
+                e);
         }
+    }
+    
+    private int mapAgentClientErrorCode(int errorCode) {
+        if (errorCode == ErrorCode.ACCESS_DENIED.getCode()) {
+            return NacosException.NO_RIGHT;
+        }
+        if (errorCode == ErrorCode.RESOURCE_NOT_FOUND.getCode()
+            || errorCode == ErrorCode.NAMESPACE_NOT_EXIST.getCode()) {
+            return NacosException.NOT_FOUND;
+        }
+        if (errorCode == ErrorCode.RESOURCE_CONFLICT.getCode()
+            || errorCode == ErrorCode.ILLEGAL_STATE.getCode()) {
+            return NacosException.CONFLICT;
+        }
+        if (errorCode == ErrorCode.PARAMETER_MISSING.getCode()
+            || errorCode == ErrorCode.PARAMETER_VALIDATE_ERROR.getCode()
+            || errorCode == ErrorCode.TENANT_PARAM_ERROR.getCode()
+            || errorCode == ErrorCode.MEDIA_TYPE_ERROR.getCode()
+            || errorCode == ErrorCode.ILLEGAL_NAMESPACE.getCode()) {
+            return NacosException.INVALID_PARAM;
+        }
+        if (errorCode == ErrorCode.SERVER_ERROR.getCode()
+            || errorCode == ErrorCode.DATA_ACCESS_ERROR.getCode()) {
+            return NacosException.SERVER_ERROR;
+        }
+        if (errorCode == ErrorCode.AGENT_ENDPOINT_PUBLICATION_OVER_LIMIT.getCode()) {
+            return NacosException.OVER_THRESHOLD;
+        }
+        if (errorCode == ErrorCode.AGENT_DISCOVERY_SUBSCRIPTION_OVER_LIMIT.getCode()) {
+            return NacosException.OVER_THRESHOLD;
+        }
+        return errorCode;
+    }
+    
+    /**
+     * Discard a reconnect redo publication after the server rejects its capacity.
+     *
+     * @param key publication redo key
+     * @param batch rejected publication batch
+     */
+    public void discardAgentEndpointPublicationAfterCapacityRejection(String key,
+        AgentEndpointRegistrationBatch batch) {
+        redoService.discardAgentEndpointPublication(key);
+        agentEndpointPublicationCapacityRejectedHandler.accept(batch);
     }
     
     private Map<String, String> getSecurityHeaders(String namespace, String mcpName) {
@@ -634,8 +1165,23 @@ public class AiGrpcClient implements AiClientProxy {
     }
     
     @Override
+    public SkillQueryResponse querySkill(String skillName, String version, String label, String md5)
+        throws NacosException {
+        throw new NacosException(NacosException.SERVER_NOT_IMPLEMENTED,
+            "Skill query is only supported via HTTP transport.");
+    }
+    
+    @Override
+    public AgentSpecQueryResponse queryAgentSpec(String agentSpecName, String version,
+        String label, String md5) throws NacosException {
+        throw new NacosException(NacosException.SERVER_NOT_IMPLEMENTED,
+            "AgentSpec query is only supported via HTTP transport.");
+    }
+    
+    @Override
     public void shutdown() throws NacosException {
         rpcClient.shutdown();
+        redoService.shutdown();
         serverListManager.shutdown();
         if (null != securityProxy) {
             securityProxy.shutdown();

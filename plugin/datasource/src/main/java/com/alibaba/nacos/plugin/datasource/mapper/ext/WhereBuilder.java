@@ -17,6 +17,7 @@
 package com.alibaba.nacos.plugin.datasource.mapper.ext;
 
 import com.alibaba.nacos.common.constant.Symbols;
+import com.alibaba.nacos.plugin.datasource.mapper.Mapper;
 import com.alibaba.nacos.plugin.datasource.model.MapperResult;
 
 import java.util.ArrayList;
@@ -106,7 +107,23 @@ public final class WhereBuilder {
      * @return Return {@link WhereBuilder}
      */
     public WhereBuilder like(String filed, Object parameter) {
-        where.append(filed).append(" LIKE ? ");
+        return like(filed, parameter, "");
+    }
+    
+    /**
+     * Build LIKE with the escape clause required by the current dialect.
+     *
+     * <p>Fuzzy search parameters escape {@code _} with a backslash, so a dialect which has no
+     * default LIKE escape character must declare one explicitly, otherwise the backslash is
+     * matched literally and the query returns no row.</p>
+     *
+     * @param filed Filed name
+     * @param parameter Parameters
+     * @param escapeClause The escape clause of the dialect, empty means no escape clause is needed
+     * @return Return {@link WhereBuilder}
+     */
+    public WhereBuilder like(String filed, Object parameter, String escapeClause) {
+        where.append(filed).append(" LIKE ? ").append(escapeClause);
         parameters.add(parameter);
         return this;
     }
@@ -119,10 +136,9 @@ public final class WhereBuilder {
      * @return Return {@link WhereBuilder}
      */
     public WhereBuilder likeWithEscape(String filed, Object parameter) {
-        where.append(filed).append(" LIKE ? ESCAPE '\\' ");
-        parameters.add(parameter);
-        return this;
+        return like(filed, parameter, Mapper.LIKE_ESCAPE_CLAUSE);
     }
+    
     /**
      * Build IN.
      *
@@ -152,10 +168,10 @@ public final class WhereBuilder {
      */
     public WhereBuilder offset(int startRow, int pageSize) {
         where.append(" OFFSET ")
-                .append(startRow)
-                .append(" ROWS FETCH NEXT ")
-                .append(pageSize)
-                .append(" ROWS ONLY");
+            .append(startRow)
+            .append(" ROWS FETCH NEXT ")
+            .append(pageSize)
+            .append(" ROWS ONLY");
         return this;
     }
     
@@ -168,9 +184,9 @@ public final class WhereBuilder {
      */
     public WhereBuilder limit(int startRow, int pageSize) {
         where.append(" LIMIT ")
-                .append(startRow)
-                .append(Symbols.COMMA)
-                .append(pageSize);
+            .append(startRow)
+            .append(Symbols.COMMA)
+            .append(pageSize);
         return this;
     }
     
@@ -182,6 +198,17 @@ public final class WhereBuilder {
      */
     public WhereBuilder groupBy(String fields) {
         where.append(" GROUP BY ").append(fields);
+        return this;
+    }
+    
+    /**
+     * Build ORDER BY.
+     *
+     * @param fields Order by fields
+     * @return Return {@link WhereBuilder}
+     */
+    public WhereBuilder orderBy(String fields) {
+        where.append(" ORDER BY ").append(fields);
         return this;
     }
     

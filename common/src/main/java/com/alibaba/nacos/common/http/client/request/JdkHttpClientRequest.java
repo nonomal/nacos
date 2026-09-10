@@ -25,7 +25,7 @@ import com.alibaba.nacos.common.http.param.Header;
 import com.alibaba.nacos.common.http.param.MediaType;
 import com.alibaba.nacos.common.model.RequestHttpEntity;
 import com.alibaba.nacos.common.utils.IoUtils;
-import com.alibaba.nacos.common.utils.JacksonUtils;
+import com.alibaba.nacos.api.utils.json.JsonUtils;
 
 import javax.net.ssl.HostnameVerifier;
 import javax.net.ssl.HttpsURLConnection;
@@ -84,45 +84,53 @@ public class JdkHttpClientRequest implements HttpClientRequest {
     }
     
     @Override
-    public HttpClientResponse execute(URI uri, String httpMethod, RequestHttpEntity requestHttpEntity)
-            throws Exception {
+    public HttpClientResponse execute(URI uri, String httpMethod,
+        RequestHttpEntity requestHttpEntity)
+        throws Exception {
         final Object body = requestHttpEntity.getBody();
         final Header headers = requestHttpEntity.getHeaders();
         replaceDefaultConfig(requestHttpEntity.getHttpClientConfig());
         
         HttpURLConnection conn = (HttpURLConnection) uri.toURL().openConnection();
-        Map<String, String> headerMap = headers.getHeader();
-        if (headerMap != null && headerMap.size() > 0) {
-            for (Map.Entry<String, String> entry : headerMap.entrySet()) {
-                conn.setRequestProperty(entry.getKey(), entry.getValue());
+        try {
+            Map<String, String> headerMap = headers.getHeader();
+            if (headerMap != null && headerMap.size() > 0) {
+                for (Map.Entry<String, String> entry : headerMap.entrySet()) {
+                    conn.setRequestProperty(entry.getKey(), entry.getValue());
+                }
             }
+            
+            conn.setConnectTimeout(this.httpClientConfig.getConTimeOutMillis());
+            conn.setReadTimeout(this.httpClientConfig.getReadTimeOutMillis());
+            conn.setRequestMethod(httpMethod);
+            if (body != null && !"".equals(body)) {
+                if (body instanceof File) {
+                    handleFileUpload(conn, (File) body);
+                } else {
+                    String contentType = headers.getValue(HttpHeaderConsts.CONTENT_TYPE);
+                    String bodyStr =
+                        body instanceof String ? (String) body : JsonUtils.toJson(body);
+                    if (MediaType.APPLICATION_FORM_URLENCODED.equals(contentType)) {
+                        Map<String, String> map = JsonUtils.toObj(bodyStr, HashMap.class);
+                        bodyStr = HttpUtils.encodingParams(map, headers.getCharset());
+                    }
+                    if (bodyStr != null) {
+                        conn.setDoOutput(true);
+                        byte[] b = bodyStr.getBytes(StandardCharsets.UTF_8);
+                        conn.setRequestProperty(CONTENT_LENGTH, String.valueOf(b.length));
+                        OutputStream outputStream = conn.getOutputStream();
+                        outputStream.write(b, 0, b.length);
+                        outputStream.flush();
+                        IoUtils.closeQuietly(outputStream);
+                    }
+                }
+            }
+            conn.connect();
+            return new JdkHttpClientResponse(conn);
+        } catch (Exception e) {
+            conn.disconnect();
+            throw e;
         }
-        
-        conn.setConnectTimeout(this.httpClientConfig.getConTimeOutMillis());
-        conn.setReadTimeout(this.httpClientConfig.getReadTimeOutMillis());
-        conn.setRequestMethod(httpMethod);
-        if (body != null && !"".equals(body)) {
-            if (body instanceof File) {
-                handleFileUpload(conn, (File) body);
-            }
-            String contentType = headers.getValue(HttpHeaderConsts.CONTENT_TYPE);
-            String bodyStr = body instanceof String ? (String) body : JacksonUtils.toJson(body);
-            if (MediaType.APPLICATION_FORM_URLENCODED.equals(contentType)) {
-                Map<String, String> map = JacksonUtils.toObj(bodyStr, HashMap.class);
-                bodyStr = HttpUtils.encodingParams(map, headers.getCharset());
-            }
-            if (bodyStr != null) {
-                conn.setDoOutput(true);
-                byte[] b = bodyStr.getBytes(StandardCharsets.UTF_8);
-                conn.setRequestProperty(CONTENT_LENGTH, String.valueOf(b.length));
-                OutputStream outputStream = conn.getOutputStream();
-                outputStream.write(b, 0, b.length);
-                outputStream.flush();
-                IoUtils.closeQuietly(outputStream);
-            }
-        }
-        conn.connect();
-        return new JdkHttpClientResponse(conn);
     }
     
     private void handleFileUpload(HttpURLConnection conn, File file) throws IOException {
@@ -131,12 +139,15 @@ public class JdkHttpClientRequest implements HttpClientRequest {
         
         StringBuilder sb = new StringBuilder();
         sb.append("--").append(boundary).append(LINE_FEED);
-        sb.append("Content-Disposition: form-data; name=\"file\"; filename=\"").append(file.getName()).append("\"")
-                .append(LINE_FEED);
-        sb.append("Content-Type: ").append(Files.probeContentType(file.toPath())).append(LINE_FEED).append(LINE_FEED);
+        sb.append("Content-Disposition: form-data; name=\"file\"; filename=\"")
+            .append(file.getName()).append("\"")
+            .append(LINE_FEED);
+        sb.append("Content-Type: ").append(Files.probeContentType(file.toPath())).append(LINE_FEED)
+            .append(LINE_FEED);
         
         byte[] fileBytes = Files.readAllBytes(file.toPath());
-        byte[] boundaryBytes = (LINE_FEED + "--" + boundary + "--" + LINE_FEED).getBytes(StandardCharsets.UTF_8);
+        byte[] boundaryBytes =
+            (LINE_FEED + "--" + boundary + "--" + LINE_FEED).getBytes(StandardCharsets.UTF_8);
         
         conn.setDoOutput(true);
         try (OutputStream outputStream = conn.getOutputStream()) {
@@ -161,6 +172,6 @@ public class JdkHttpClientRequest implements HttpClientRequest {
     
     @Override
     public void close() throws IOException {
-    
+        
     }
 }

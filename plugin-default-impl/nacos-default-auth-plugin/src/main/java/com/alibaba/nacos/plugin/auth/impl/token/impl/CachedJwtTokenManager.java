@@ -17,9 +17,9 @@
 package com.alibaba.nacos.plugin.auth.impl.token.impl;
 
 import com.alibaba.nacos.plugin.auth.exception.AccessException;
+import com.alibaba.nacos.plugin.auth.impl.configuration.NacosAuthPluginConfigProvider;
 import com.alibaba.nacos.plugin.auth.impl.token.TokenManager;
 import com.alibaba.nacos.plugin.auth.impl.users.NacosUser;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.security.core.Authentication;
 
 import java.util.ArrayList;
@@ -47,12 +47,18 @@ public class CachedJwtTokenManager implements TokenManager {
     
     private final JwtTokenManager jwtTokenManager;
     
-    public CachedJwtTokenManager(JwtTokenManager jwtTokenManager) {
+    private final NacosAuthPluginConfigProvider configProvider;
+    
+    public CachedJwtTokenManager(JwtTokenManager jwtTokenManager,
+        NacosAuthPluginConfigProvider configProvider) {
         this.jwtTokenManager = jwtTokenManager;
+        this.configProvider = configProvider;
     }
     
-    @Scheduled(initialDelay = 30000, fixedDelay = 60000)
-    private void cleanExpiredToken() {
+    /**
+     * Remove expired token entries from both caches.
+     */
+    public void cleanExpiredToken() {
         List<String> tokens = new ArrayList<>();
         tokenMap.forEach((k, v) -> {
             if (v.getExpiredTimeMills() < System.currentTimeMillis()) {
@@ -69,6 +75,14 @@ public class CachedJwtTokenManager implements TokenManager {
         users.forEach(e -> userMap.remove(e));
     }
     
+    /**
+     * Clear all cached tokens after relevant runtime token settings change.
+     */
+    public void clear() {
+        tokenMap.clear();
+        userMap.clear();
+    }
+    
     @Override
     public String createToken(Authentication authentication) throws AccessException {
         return createToken(authentication.getName());
@@ -82,16 +96,16 @@ public class CachedJwtTokenManager implements TokenManager {
      * @throws AccessException access exception
      */
     public String createToken(String username) throws AccessException {
-        if (userMap.containsKey(username)) {
-            String token = userMap.get(username).getToken();
-            long expiredTime = userMap.get(username).getExpiredTimeMills();
-            if (!needRefresh(expiredTime)) {
-                return token;
+        TokenEntity cached = userMap.get(username);
+        if (cached != null) {
+            if (!needRefresh(cached.getExpiredTimeMills())) {
+                return cached.getToken();
             }
         }
         String token = jwtTokenManager.createToken(username);
         NacosUser user = jwtTokenManager.parseToken(token);
-        long expiredTime = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(getTokenValidityInSeconds());
+        long expiredTime =
+            System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(getTokenValidityInSeconds());
         Authentication authentication = jwtTokenManager.getAuthentication(token);
         TokenEntity model = new TokenEntity(token, username, expiredTime, authentication, user);
         tokenMap.put(token, model);
@@ -107,10 +121,11 @@ public class CachedJwtTokenManager implements TokenManager {
      * @throws AccessException access exception
      */
     public Authentication getAuthentication(String token) throws AccessException {
-        if (!tokenMap.containsKey(token)) {
-            return jwtTokenManager.getAuthentication(token);
+        TokenEntity cached = tokenMap.get(token);
+        if (cached != null) {
+            return cached.getAuthentication();
         }
-        return tokenMap.get(token).getAuthentication();
+        return jwtTokenManager.getAuthentication(token);
     }
     
     /**
@@ -120,54 +135,61 @@ public class CachedJwtTokenManager implements TokenManager {
      * @throws AccessException access exception
      */
     public void validateToken(String token) throws AccessException {
-        if (!tokenMap.containsKey(token)) {
-            // jwtTokenManager.validateToken(token) will throw runtime exception if token invalid
-            jwtTokenManager.validateToken(token);
-            // if token valid
-            Authentication authentication = jwtTokenManager.getAuthentication(token);
-            String username = authentication.getName();
-            if (username == null || username.isEmpty()) {
-                return;
-            }
-            long expiredTime = TimeUnit.SECONDS.toMillis(jwtTokenManager.getExpiredTimeInSeconds(token));
-            if (expiredTime <= System.currentTimeMillis()) {
-                return;
-            }
-            NacosUser user = jwtTokenManager.parseToken(token);
-            tokenMap.putIfAbsent(token, new TokenEntity(token, username, expiredTime, authentication, user));
+        if (tokenMap.get(token) != null) {
+            return;
         }
+        // jwtTokenManager.validateToken(token) will throw runtime exception if token invalid
+        jwtTokenManager.validateToken(token);
+        // if token valid
+        Authentication authentication = jwtTokenManager.getAuthentication(token);
+        String username = authentication.getName();
+        if (username == null || username.isEmpty()) {
+            return;
+        }
+        long expiredTime =
+            TimeUnit.SECONDS.toMillis(jwtTokenManager.getExpiredTimeInSeconds(token));
+        if (expiredTime <= System.currentTimeMillis()) {
+            return;
+        }
+        NacosUser user = jwtTokenManager.parseToken(token);
+        tokenMap.putIfAbsent(token,
+            new TokenEntity(token, username, expiredTime, authentication, user));
     }
     
     @Override
     public NacosUser parseToken(String token) throws AccessException {
-        if (!tokenMap.containsKey(token)) {
-            Authentication authentication = jwtTokenManager.getAuthentication(token);
-            String username = authentication.getName();
-            if (username == null || username.isEmpty()) {
-                throw new AccessException("invalid token, username is empty");
-            }
-            long expiredTime = TimeUnit.SECONDS.toMillis(jwtTokenManager.getExpiredTimeInSeconds(token));
-            if (expiredTime <= System.currentTimeMillis()) {
-                throw new AccessException("expired token");
-            }
-            NacosUser user = jwtTokenManager.parseToken(token);
-            tokenMap.putIfAbsent(token, new TokenEntity(token, username, expiredTime, authentication, user));
-            return user;
+        TokenEntity cached = tokenMap.get(token);
+        if (cached != null) {
+            return cached.getNacosUser();
         }
-        return tokenMap.get(token).getNacosUser();
+        Authentication authentication = jwtTokenManager.getAuthentication(token);
+        String username = authentication.getName();
+        if (username == null || username.isEmpty()) {
+            throw new AccessException("invalid token, username is empty");
+        }
+        long expiredTime =
+            TimeUnit.SECONDS.toMillis(jwtTokenManager.getExpiredTimeInSeconds(token));
+        if (expiredTime <= System.currentTimeMillis()) {
+            throw new AccessException("expired token");
+        }
+        NacosUser user = jwtTokenManager.parseToken(token);
+        tokenMap.putIfAbsent(token,
+            new TokenEntity(token, username, expiredTime, authentication, user));
+        return user;
     }
     
     public long getTokenTtlInSeconds(String token) throws AccessException {
-        if (tokenMap.containsKey(token)) {
+        TokenEntity cached = tokenMap.get(token);
+        if (cached != null) {
             return TimeUnit.MILLISECONDS.toSeconds(
-                    tokenMap.get(token).getExpiredTimeMills() - System.currentTimeMillis());
+                cached.getExpiredTimeMills() - System.currentTimeMillis());
         }
         return jwtTokenManager.getTokenTtlInSeconds(token);
     }
     
     @Override
     public long getTokenValidityInSeconds() {
-        return jwtTokenManager.getTokenValidityInSeconds();
+        return configProvider.getConfig().getTokenExpireSeconds();
     }
     
     private boolean needRefresh(long expiredTimeMills) {
@@ -187,8 +209,9 @@ public class CachedJwtTokenManager implements TokenManager {
         
         private NacosUser nacosUser;
         
-        public TokenEntity(String token, String userName, long expiredTimeMills, Authentication authentication,
-                NacosUser nacosUser) {
+        public TokenEntity(String token, String userName, long expiredTimeMills,
+            Authentication authentication,
+            NacosUser nacosUser) {
             this.token = token;
             this.userName = userName;
             this.expiredTimeMills = expiredTimeMills;
@@ -238,8 +261,10 @@ public class CachedJwtTokenManager implements TokenManager {
         
         @Override
         public String toString() {
-            return "TokenEntity{" + "token='" + token + '\'' + ", userName='" + userName + '\'' + ", expiredTimeMills="
-                    + expiredTimeMills + ", authentication=" + authentication + ", nacosUser=" + nacosUser + '}';
+            return "TokenEntity{" + "token='" + token + '\'' + ", userName='" + userName + '\''
+                + ", expiredTimeMills="
+                + expiredTimeMills + ", authentication=" + authentication + ", nacosUser="
+                + nacosUser + '}';
         }
     }
     

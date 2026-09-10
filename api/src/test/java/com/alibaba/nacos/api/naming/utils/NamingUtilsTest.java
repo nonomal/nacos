@@ -29,6 +29,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -69,6 +70,12 @@ class NamingUtilsTest {
     @Test
     void testGetServiceNameWithEmpty() {
         assertEquals(StringUtils.EMPTY, NamingUtils.getServiceName(null));
+    }
+    
+    @Test
+    void testGetServiceNameTrailingSpliter() {
+        // When input is "group@@", the serviceName after "@@" is empty; should return "" not crash
+        assertEquals(StringUtils.EMPTY, NamingUtils.getServiceName("group@@"));
     }
     
     @Test
@@ -153,7 +160,8 @@ class NamingUtilsTest {
         assertEquals("public@@group@@serviceName", serviceKeyWithEmptyNamespace);
         
         // 测试namespace为null的情况
-        String serviceKeyWithNullNamespace = NamingUtils.getServiceKey(null, "group", "serviceName");
+        String serviceKeyWithNullNamespace =
+            NamingUtils.getServiceKey(null, "group", "serviceName");
         assertEquals("public@@group@@serviceName", serviceKeyWithNullNamespace);
     }
     
@@ -190,6 +198,7 @@ class NamingUtilsTest {
     void testCheckInstanceIsLegal() throws NacosException {
         // check invalid clusterName
         Instance instance = new Instance();
+        instance.setIp("1.1.1.1");
         instance.setClusterName("cluster1,cluster2");
         try {
             NamingUtils.checkInstanceIsLegal(instance);
@@ -197,8 +206,8 @@ class NamingUtilsTest {
         } catch (Exception e) {
             assertTrue(e instanceof NacosException);
             assertEquals(
-                    "Instance 'clusterName' should be characters with only 0-9a-zA-Z-. (current: cluster1,cluster2)",
-                    e.getMessage());
+                "Instance 'clusterName' should be characters with only 0-9a-zA-Z-. (current: cluster1,cluster2)",
+                e.getMessage());
         }
         
         // valid clusterName
@@ -217,8 +226,9 @@ class NamingUtilsTest {
             assertTrue(false);
         } catch (Exception e) {
             assertTrue(e instanceof NacosException);
-            assertEquals("Instance 'heart beat interval' must less than 'heart beat timeout' and 'ip delete timeout'.",
-                    e.getMessage());
+            assertEquals(
+                "Instance 'heart beat interval' must less than 'heart beat timeout' and 'ip delete timeout'.",
+                e.getMessage());
         }
         meta.put(PreservedMetadataKeys.HEART_BEAT_TIMEOUT, "3");
         meta.put(PreservedMetadataKeys.HEART_BEAT_INTERVAL, "2");
@@ -231,6 +241,7 @@ class NamingUtilsTest {
     void testBatchCheckInstanceIsLegal() throws NacosException {
         // check invalid clusterName
         Instance instance = new Instance();
+        instance.setIp("1.1.1.1");
         instance.setClusterName("cluster1,cluster2");
         List<Instance> instanceList = new ArrayList<>();
         instanceList.add(instance);
@@ -240,16 +251,15 @@ class NamingUtilsTest {
         } catch (Exception e) {
             assertTrue(e instanceof NacosException);
             assertEquals(
-                    "Instance 'clusterName' should be characters with only 0-9a-zA-Z-. (current: cluster1,cluster2)",
-                    e.getMessage());
+                "Instance 'clusterName' should be characters with only 0-9a-zA-Z-. (current: cluster1,cluster2)",
+                e.getMessage());
         }
         instanceList.remove(instance);
         
-        // TODO valid clusterName
+        // valid clusterName
         instance.setClusterName("cluster1");
         instanceList.add(instance);
-        NamingUtils.batchCheckInstanceIsLegal(instanceList);
-        assertTrue(true);
+        assertDoesNotThrow(() -> NamingUtils.batchCheckInstanceIsLegal(instanceList));
         
         instanceList.remove(instance);
         
@@ -265,8 +275,9 @@ class NamingUtilsTest {
             assertTrue(false);
         } catch (Exception e) {
             assertTrue(e instanceof NacosException);
-            assertEquals("Instance 'heart beat interval' must less than 'heart beat timeout' and 'ip delete timeout'.",
-                    e.getMessage());
+            assertEquals(
+                "Instance 'heart beat interval' must less than 'heart beat timeout' and 'ip delete timeout'.",
+                e.getMessage());
         }
         instanceList.remove(instance);
         
@@ -277,6 +288,15 @@ class NamingUtilsTest {
         instanceList.add(instance);
         NamingUtils.batchCheckInstanceIsLegal(instanceList);
         assertTrue(true);
+    }
+    
+    @Test
+    void testCheckInstanceIsLegalWithBlankIp() {
+        Instance instance = new Instance();
+        instance.setIp("  ");
+        NacosException exception = assertThrows(NacosException.class,
+            () -> NamingUtils.checkInstanceIsLegal(instance));
+        assertEquals(NacosException.INVALID_PARAM, exception.getErrCode());
     }
     
     @Test

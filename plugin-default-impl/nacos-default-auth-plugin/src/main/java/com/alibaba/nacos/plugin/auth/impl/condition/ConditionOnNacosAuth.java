@@ -16,21 +16,23 @@
 
 package com.alibaba.nacos.plugin.auth.impl.condition;
 
-import com.alibaba.nacos.plugin.auth.constant.Constants;
+import com.alibaba.nacos.core.auth.AuthPluginTypeResolver;
 import com.alibaba.nacos.plugin.auth.impl.constant.AuthSystemTypes;
-import com.alibaba.nacos.sys.env.EnvUtil;
 import org.springframework.context.annotation.Condition;
 import org.springframework.context.annotation.ConditionContext;
 import org.springframework.core.type.AnnotatedTypeMetadata;
 
 /**
- * when nacos.core.auth.system.type=nacos
+ * When the selected auth plugin type is nacos.
  *
  * @author karsonto
  */
 public class ConditionOnNacosAuth implements Condition {
+    
     @Override
-    public boolean matches(ConditionContext conditionContext, AnnotatedTypeMetadata annotatedTypeMetadata) {
-        return AuthSystemTypes.NACOS.name().equalsIgnoreCase(EnvUtil.getProperty(Constants.Auth.NACOS_CORE_AUTH_SYSTEM_TYPE));
+    public boolean matches(ConditionContext conditionContext,
+        AnnotatedTypeMetadata annotatedTypeMetadata) {
+        return AuthSystemTypes.NACOS.name()
+            .equalsIgnoreCase(AuthPluginTypeResolver.resolve());
     }
 }

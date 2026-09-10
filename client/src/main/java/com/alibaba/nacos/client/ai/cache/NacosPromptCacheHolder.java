@@ -27,7 +27,7 @@ import com.alibaba.nacos.common.executor.NameThreadFactory;
 import com.alibaba.nacos.client.utils.LogUtils;
 import com.alibaba.nacos.common.lifecycle.Closeable;
 import com.alibaba.nacos.common.notify.NotifyCenter;
-import com.alibaba.nacos.common.utils.JacksonUtils;
+import com.alibaba.nacos.api.utils.json.JsonUtils;
 import com.alibaba.nacos.common.utils.StringUtils;
 import org.slf4j.Logger;
 
@@ -62,16 +62,18 @@ public class NacosPromptCacheHolder implements Closeable {
         this.promptCache = new ConcurrentHashMap<>(4);
         this.updateTaskMap = new ConcurrentHashMap<>(4);
         this.updaterExecutor = new ScheduledThreadPoolExecutor(1,
-                new NameThreadFactory("com.alibaba.nacos.client.ai.prompt.updater"));
+            new NameThreadFactory("com.alibaba.nacos.client.ai.prompt.updater"));
         this.updateIntervalMillis = properties.getLong(AiConstants.AI_PROMPT_CACHE_UPDATE_INTERVAL,
-                AiConstants.DEFAULT_AI_CACHE_UPDATE_INTERVAL);
+            AiConstants.DEFAULT_AI_CACHE_UPDATE_INTERVAL);
     }
     
-    private Prompt queryPrompt(String promptKey, String version, String label) throws NacosException {
+    private Prompt queryPrompt(String promptKey, String version, String label)
+        throws NacosException {
         return queryPrompt(promptKey, version, label, null);
     }
     
-    private Prompt queryPrompt(String promptKey, String version, String label, String md5) throws NacosException {
+    private Prompt queryPrompt(String promptKey, String version, String label, String md5)
+        throws NacosException {
         return aiClientProxy.queryPrompt(promptKey, version, label, md5);
     }
     
@@ -82,10 +84,11 @@ public class NacosPromptCacheHolder implements Closeable {
      * @return current Prompt object, null if not found
      * @throws NacosException if error occurs
      */
-    public Prompt subscribePrompt(String promptKey, String version, String label) throws NacosException {
+    public Prompt subscribePrompt(String promptKey, String version, String label)
+        throws NacosException {
         if (StringUtils.isBlank(promptKey)) {
             throw new NacosException(NacosException.INVALID_PARAM,
-                    "Required parameter `promptKey` not present");
+                "Required parameter `promptKey` not present");
         }
         String cacheKey = CacheKeyUtils.buildPromptKey(promptKey, version, label);
         
@@ -155,8 +158,8 @@ public class NacosPromptCacheHolder implements Closeable {
     }
     
     private boolean isPromptChanged(Prompt oldPrompt, Prompt newPrompt) {
-        String oldJson = oldPrompt == null ? StringUtils.EMPTY : JacksonUtils.toJson(oldPrompt);
-        String newJson = newPrompt == null ? StringUtils.EMPTY : JacksonUtils.toJson(newPrompt);
+        String oldJson = oldPrompt == null ? StringUtils.EMPTY : JsonUtils.toJson(oldPrompt);
+        String newJson = newPrompt == null ? StringUtils.EMPTY : JsonUtils.toJson(newPrompt);
         return !StringUtils.equals(oldJson, newJson);
     }
     
@@ -199,7 +202,8 @@ public class NacosPromptCacheHolder implements Closeable {
                 } else if (e.getErrCode() == NacosException.NOT_MODIFIED) {
                     // No content change, keep local cache and skip callback.
                 } else {
-                    LOGGER.warn("Prompt updater execute query failed: promptKey={}, err={}", promptKey, e.getErrMsg());
+                    LOGGER.warn("Prompt updater execute query failed: promptKey={}, err={}",
+                        promptKey, e.getErrMsg());
                 }
             } finally {
                 if (!cancel.get()) {

@@ -17,10 +17,12 @@
 package com.alibaba.nacos.common.http.client;
 
 import com.alibaba.nacos.common.http.client.handler.BeanResponseHandler;
+import com.alibaba.nacos.common.http.client.handler.ByteArrayResponseHandler;
 import com.alibaba.nacos.common.http.client.handler.ResponseHandler;
 import com.alibaba.nacos.common.http.client.handler.RestResultResponseHandler;
 import com.alibaba.nacos.common.http.client.handler.StringResponseHandler;
 import com.alibaba.nacos.common.model.RestResult;
+import com.alibaba.nacos.common.utils.TypeUtils;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -44,7 +46,10 @@ class AbstractNacosRestTemplateTest {
     @BeforeEach
     void setUp() throws Exception {
         restTemplate = new MockNacosRestTemplate(null);
-        restTemplate.registerResponseHandler(MockNacosRestTemplate.class.getName(), mockResponseHandler);
+        restTemplate.registerResponseHandler(MockNacosRestTemplate.class.getName(),
+            mockResponseHandler);
+        restTemplate.registerResponseHandler(MockGenericResponse.class.getName(),
+            mockResponseHandler);
     }
     
     @Test
@@ -54,17 +59,51 @@ class AbstractNacosRestTemplateTest {
     
     @Test
     void testSelectResponseHandlerForRestResult() {
-        assertTrue(restTemplate.testFindResponseHandler(RestResult.class) instanceof RestResultResponseHandler);
+        assertTrue(restTemplate
+            .testFindResponseHandler(RestResult.class) instanceof RestResultResponseHandler);
+    }
+    
+    @Test
+    void testSelectResponseHandlerForParameterizedRestResult() {
+        Type responseType = TypeUtils.parameterize(RestResult.class, String.class);
+        
+        assertTrue(
+            restTemplate
+                .testFindResponseHandler(responseType) instanceof RestResultResponseHandler);
+    }
+    
+    @Test
+    void testSelectResponseHandlerForByteArray() {
+        assertTrue(
+            restTemplate.testFindResponseHandler(byte[].class) instanceof ByteArrayResponseHandler);
     }
     
     @Test
     void testSelectResponseHandlerForDefault() {
-        assertTrue(restTemplate.testFindResponseHandler(AbstractNacosRestTemplateTest.class) instanceof BeanResponseHandler);
+        assertTrue(restTemplate.testFindResponseHandler(
+            AbstractNacosRestTemplateTest.class) instanceof BeanResponseHandler);
+    }
+    
+    @Test
+    void testSelectResponseHandlerForUnsupportedType() {
+        Type responseType = new Type() {
+        };
+        
+        assertTrue(
+            restTemplate.testFindResponseHandler(responseType) instanceof BeanResponseHandler);
     }
     
     @Test
     void testSelectResponseHandlerForCustom() {
-        assertEquals(mockResponseHandler, restTemplate.testFindResponseHandler(MockNacosRestTemplate.class));
+        assertEquals(mockResponseHandler,
+            restTemplate.testFindResponseHandler(MockNacosRestTemplate.class));
+    }
+    
+    @Test
+    void testSelectResponseHandlerForParameterizedCustom() {
+        Type responseType = TypeUtils.parameterize(MockGenericResponse.class, String.class);
+        
+        assertEquals(mockResponseHandler, restTemplate.testFindResponseHandler(responseType));
     }
     
     private static class MockNacosRestTemplate extends AbstractNacosRestTemplate {
@@ -76,5 +115,8 @@ class AbstractNacosRestTemplateTest {
         private ResponseHandler testFindResponseHandler(Type responseType) {
             return super.selectResponseHandler(responseType);
         }
+    }
+    
+    private static class MockGenericResponse<T> {
     }
 }

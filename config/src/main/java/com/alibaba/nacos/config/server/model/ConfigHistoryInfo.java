@@ -16,8 +16,7 @@
 
 package com.alibaba.nacos.config.server.model;
 
-import com.fasterxml.jackson.databind.annotation.JsonSerialize;
-import com.fasterxml.jackson.databind.ser.std.ToStringSerializer;
+import com.fasterxml.jackson.annotation.JsonFormat;
 
 import java.io.Serializable;
 import java.sql.Timestamp;
@@ -32,7 +31,7 @@ public class ConfigHistoryInfo implements Serializable {
     
     private static final long serialVersionUID = -7827521105376245603L;
     
-    @JsonSerialize(using = ToStringSerializer.class)
+    @JsonFormat(shape = JsonFormat.Shape.STRING)
     private long id;
     
     private long lastId = -1;
@@ -215,17 +214,23 @@ public class ConfigHistoryInfo implements Serializable {
             return false;
         }
         ConfigHistoryInfo that = (ConfigHistoryInfo) o;
-        return id == that.id && lastId == that.lastId && Objects.equals(dataId, that.dataId) && Objects.equals(group,
-                that.group) && Objects.equals(tenant, that.tenant) && Objects.equals(appName, that.appName)
-                && Objects.equals(md5, that.md5) && Objects.equals(content, that.content) && Objects.equals(srcIp,
-                that.srcIp) && Objects.equals(srcUser, that.srcUser) && Objects.equals(opType, that.opType)
-                && Objects.equals(createdTime, that.createdTime) && Objects.equals(lastModifiedTime,
-                that.lastModifiedTime) && Objects.equals(encryptedDataKey, that.encryptedDataKey);
+        return id == that.id && lastId == that.lastId && Objects.equals(dataId, that.dataId)
+            && Objects.equals(group,
+                that.group)
+            && Objects.equals(tenant, that.tenant) && Objects.equals(appName, that.appName)
+            && Objects.equals(md5, that.md5) && Objects.equals(content, that.content)
+            && Objects.equals(srcIp,
+                that.srcIp)
+            && Objects.equals(srcUser, that.srcUser) && Objects.equals(opType, that.opType)
+            && Objects.equals(createdTime, that.createdTime) && Objects.equals(lastModifiedTime,
+                that.lastModifiedTime)
+            && Objects.equals(encryptedDataKey, that.encryptedDataKey);
     }
     
     @Override
     public int hashCode() {
-        return Objects.hash(id, lastId, dataId, group, tenant, appName, md5, content, srcIp, srcUser, opType,
-                createdTime, lastModifiedTime, encryptedDataKey);
+        return Objects.hash(id, lastId, dataId, group, tenant, appName, md5, content, srcIp,
+            srcUser, opType,
+            createdTime, lastModifiedTime, encryptedDataKey);
     }
 }

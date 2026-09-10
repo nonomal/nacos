@@ -28,19 +28,11 @@ import com.alibaba.nacos.copilot.model.SkillGenerationResponse;
 public interface SkillGenerationService {
     
     /**
-     * Generate skill from background information.
-     *
-     * @param request generation request
-     * @return generated skill response
-     */
-    SkillGenerationResponse generateSkill(SkillGenerationRequest request);
-    
-    /**
      * Generate skill with stream response.
      *
      * @param request  generation request
      * @param callback stream response callback
      */
-    void generateSkillStream(SkillGenerationRequest request, 
-                            StreamResponseCallback<SkillGenerationResponse> callback);
+    void generateSkillStream(SkillGenerationRequest request,
+        StreamResponseCallback<SkillGenerationResponse> callback);
 }

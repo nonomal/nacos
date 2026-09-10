@@ -56,11 +56,13 @@ class ConsoleAuthModuleStateBuilderTest {
         cachedEnvironment = EnvUtil.getEnvironment();
         MockEnvironment environment = new MockEnvironment();
         environment.setProperty(Constants.Auth.NACOS_CORE_AUTH_SYSTEM_TYPE, "nacos");
+        environment.setProperty(Constants.Auth.NACOS_CORE_AUTH_ENABLED, "false");
         environment.setProperty(Constants.Auth.NACOS_CORE_AUTH_ADMIN_ENABLED, "false");
         EnvUtil.setEnvironment(environment);
         cachedAuthConfig = NacosAuthConfigHolder.getInstance()
-                .getNacosAuthConfigByScope(NacosConsoleAuthConfig.NACOS_CONSOLE_AUTH_SCOPE);
-        Map<String, NacosAuthConfig> nacosAuthConfigMap = (Map<String, NacosAuthConfig>) ReflectionTestUtils.getField(
+            .getNacosAuthConfigByScope(NacosConsoleAuthConfig.NACOS_CONSOLE_AUTH_SCOPE);
+        Map<String, NacosAuthConfig> nacosAuthConfigMap =
+            (Map<String, NacosAuthConfig>) ReflectionTestUtils.getField(
                 NacosAuthConfigHolder.getInstance(), "nacosAuthConfigMap");
         nacosAuthConfigMap.put(NacosConsoleAuthConfig.NACOS_CONSOLE_AUTH_SCOPE, authConfig);
         builder = new ConsoleAuthModuleStateBuilder();
@@ -69,7 +71,8 @@ class ConsoleAuthModuleStateBuilderTest {
     @AfterEach
     void tearDown() {
         EnvUtil.setEnvironment(cachedEnvironment);
-        Map<String, NacosAuthConfig> nacosAuthConfigMap = (Map<String, NacosAuthConfig>) ReflectionTestUtils.getField(
+        Map<String, NacosAuthConfig> nacosAuthConfigMap =
+            (Map<String, NacosAuthConfig>) ReflectionTestUtils.getField(
                 NacosAuthConfigHolder.getInstance(), "nacosAuthConfigMap");
         nacosAuthConfigMap.put(NacosConsoleAuthConfig.NACOS_CONSOLE_AUTH_SCOPE, cachedAuthConfig);
     }
@@ -78,15 +81,18 @@ class ConsoleAuthModuleStateBuilderTest {
     void build() {
         ModuleState state = builder.build();
         assertFalse((Boolean) state.getStates().get(ConsoleAuthModuleStateBuilder.AUTH_ENABLED));
-        assertFalse((Boolean) state.getStates().get(ConsoleAuthModuleStateBuilder.LOGIN_PAGE_ENABLED));
+        assertFalse(
+            (Boolean) state.getStates().get(ConsoleAuthModuleStateBuilder.LOGIN_PAGE_ENABLED));
         assertNull(state.getStates().get(ConsoleAuthModuleStateBuilder.AUTH_SYSTEM_TYPE));
         assertEquals(ConsoleAuthModuleStateBuilder.AUTH_MODULE, state.getModuleName());
         when(authConfig.isAuthEnabled()).thenReturn(true);
         when(authConfig.getNacosAuthSystemType()).thenReturn("nacos");
         state = builder.build();
         assertTrue((Boolean) state.getStates().get(ConsoleAuthModuleStateBuilder.AUTH_ENABLED));
-        assertTrue((Boolean) state.getStates().get(ConsoleAuthModuleStateBuilder.LOGIN_PAGE_ENABLED));
-        assertEquals("nacos", state.getStates().get(ConsoleAuthModuleStateBuilder.AUTH_SYSTEM_TYPE));
+        assertTrue(
+            (Boolean) state.getStates().get(ConsoleAuthModuleStateBuilder.LOGIN_PAGE_ENABLED));
+        assertEquals("nacos",
+            state.getStates().get(ConsoleAuthModuleStateBuilder.AUTH_SYSTEM_TYPE));
     }
     
     @Test

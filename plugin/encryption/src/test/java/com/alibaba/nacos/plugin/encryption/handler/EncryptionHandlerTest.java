@@ -19,8 +19,12 @@ package com.alibaba.nacos.plugin.encryption.handler;
 import com.alibaba.nacos.common.utils.Pair;
 import com.alibaba.nacos.plugin.encryption.EncryptionPluginManager;
 import com.alibaba.nacos.plugin.encryption.spi.EncryptionPluginService;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+
+import java.lang.reflect.Field;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -34,9 +38,12 @@ class EncryptionHandlerTest {
     
     private EncryptionPluginService mockEncryptionPluginService;
     
+    private EncryptionPluginService previousEncryptionPluginService;
+    
     @BeforeEach
-    void setUp() {
+    void setUp() throws Exception {
         mockEncryptionPluginService = new EncryptionPluginService() {
+            
             @Override
             public String encrypt(String secretKey, String content) {
                 return secretKey + content;
@@ -67,7 +74,19 @@ class EncryptionHandlerTest {
                 return generateSecretKey();
             }
         };
+        previousEncryptionPluginService =
+            getPlugins().remove(mockEncryptionPluginService.algorithmName());
         EncryptionPluginManager.join(mockEncryptionPluginService);
+    }
+    
+    @AfterEach
+    void tearDown() throws Exception {
+        Map<String, EncryptionPluginService> plugins = getPlugins();
+        plugins.remove(mockEncryptionPluginService.algorithmName());
+        if (previousEncryptionPluginService != null) {
+            plugins.put(previousEncryptionPluginService.algorithmName(),
+                previousEncryptionPluginService);
+        }
     }
     
     @Test
@@ -78,7 +97,8 @@ class EncryptionHandlerTest {
     
     @Test
     void testDecryptHandler() {
-        Pair<String, String> pair = EncryptionHandler.decryptHandler("test-dataId", "12345678", "content");
+        Pair<String, String> pair =
+            EncryptionHandler.decryptHandler("test-dataId", "12345678", "content");
         assertNotNull(pair);
     }
     
@@ -86,7 +106,8 @@ class EncryptionHandlerTest {
     void testCornerCaseDataIdAlgoParse() {
         String dataId = "cipher-";
         Pair<String, String> pair = EncryptionHandler.encryptHandler(dataId, "content");
-        assertNotNull(pair, "should not throw exception when parsing enc algo for dataId '" + dataId + "'");
+        assertNotNull(pair,
+            "should not throw exception when parsing enc algo for dataId '" + dataId + "'");
     }
     
     @Test
@@ -95,7 +116,8 @@ class EncryptionHandlerTest {
         String content = "content";
         Pair<String, String> pair = EncryptionHandler.encryptHandler(dataId, content);
         assertNotNull(pair);
-        assertEquals(content, pair.getSecond(), "should return original content if algorithm is not defined.");
+        assertEquals(content, pair.getSecond(),
+            "should return original content if algorithm is not defined.");
     }
     
     @Test
@@ -104,7 +126,8 @@ class EncryptionHandlerTest {
         String content = "content";
         Pair<String, String> pair = EncryptionHandler.decryptHandler(dataId, "", content);
         assertNotNull(pair);
-        assertEquals(content, pair.getSecond(), "should return original content if algorithm is not defined.");
+        assertEquals(content, pair.getSecond(),
+            "should return original content if algorithm is not defined.");
     }
     
     @Test
@@ -114,8 +137,10 @@ class EncryptionHandlerTest {
         String sec = mockEncryptionPluginService.generateSecretKey();
         Pair<String, String> pair = EncryptionHandler.encryptHandler(dataId, content);
         assertNotNull(pair);
-        assertEquals(mockEncryptionPluginService.encrypt(sec, content), pair.getSecond(), "should return encrypted content.");
-        assertEquals(mockEncryptionPluginService.encryptSecretKey(sec), pair.getFirst(), "should return encrypted secret key.");
+        assertEquals(mockEncryptionPluginService.encrypt(sec, content), pair.getSecond(),
+            "should return encrypted content.");
+        assertEquals(mockEncryptionPluginService.encryptSecretKey(sec), pair.getFirst(),
+            "should return encrypted secret key.");
     }
     
     @Test
@@ -129,5 +154,12 @@ class EncryptionHandlerTest {
         assertNotNull(pair);
         assertEquals(oContent, pair.getSecond(), "should return original content.");
         assertEquals(oSec, pair.getFirst(), "should return original secret key.");
+    }
+    
+    @SuppressWarnings("unchecked")
+    private Map<String, EncryptionPluginService> getPlugins() throws Exception {
+        Field field = EncryptionPluginManager.class.getDeclaredField("ENCRYPTION_SPI_MAP");
+        field.setAccessible(true);
+        return (Map<String, EncryptionPluginService>) field.get(null);
     }
 }

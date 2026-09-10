@@ -17,8 +17,6 @@
 package com.alibaba.nacos.persistence.datasource;
 
 import com.zaxxer.hikari.HikariDataSource;
-import org.springframework.boot.context.properties.bind.Bindable;
-import org.springframework.boot.context.properties.bind.Binder;
 import org.springframework.core.env.Environment;
 
 import java.util.concurrent.TimeUnit;
@@ -36,7 +34,7 @@ public class DataSourcePoolProperties {
     public static final long DEFAULT_CONNECTION_TIMEOUT = TimeUnit.SECONDS.toMillis(3L);
     
     public static final long DEFAULT_VALIDATION_TIMEOUT = TimeUnit.SECONDS.toMillis(10L);
-
+    
     public static final long DEFAULT_IDLE_TIMEOUT = TimeUnit.MINUTES.toMillis(10L);
     
     public static final int DEFAULT_MAX_POOL_SIZE = 20;
@@ -60,8 +58,12 @@ public class DataSourcePoolProperties {
      * @return new hikari config
      */
     public static DataSourcePoolProperties build(Environment environment) {
+        return build(new DatasourceConfigResolver(environment));
+    }
+    
+    static DataSourcePoolProperties build(DatasourceConfigResolver configResolver) {
         DataSourcePoolProperties result = new DataSourcePoolProperties();
-        Binder.get(environment).bind("db.pool.config", Bindable.ofInstance(result.getDataSource()));
+        configResolver.bindPoolConfig(result.getDataSource());
         return result;
     }
     

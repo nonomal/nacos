@@ -24,10 +24,12 @@ import com.alibaba.nacos.api.config.model.SameConfigPolicy;
 import com.alibaba.nacos.api.exception.NacosException;
 import com.alibaba.nacos.api.model.Page;
 import com.alibaba.nacos.api.model.v2.Result;
+import com.alibaba.nacos.config.server.auth.ConfigCloneSourceReadPermissionChecker;
 import com.alibaba.nacos.config.server.controller.parameters.SameNamespaceCloneConfigBean;
 import com.alibaba.nacos.config.server.model.ConfigRequestInfo;
 import com.alibaba.nacos.config.server.model.form.ConfigForm;
 import com.alibaba.nacos.console.handler.config.ConfigHandler;
+import com.alibaba.nacos.plugin.auth.exception.AccessException;
 import jakarta.servlet.ServletException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -47,10 +49,13 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -79,6 +84,9 @@ public class ConfigProxyTest {
     @Mock
     private ConfigHandler configHandler;
     
+    @Mock
+    private ConfigCloneSourceReadPermissionChecker configCloneSourceReadPermissionChecker;
+    
     private ConfigProxy configProxy;
     
     @Mock
@@ -86,7 +94,8 @@ public class ConfigProxyTest {
     
     @BeforeEach
     public void setUp() {
-        configProxy = new ConfigProxy(configHandler);
+        configProxy = new ConfigProxy(configHandler,
+            configCloneSourceReadPermissionChecker);
     }
     
     @Test
@@ -100,10 +109,12 @@ public class ConfigProxyTest {
         expectedConfigDetailInfo.setGroupName(group);
         expectedConfigDetailInfo.setNamespaceId(namespaceId);
         
-        when(configHandler.getConfigDetail(dataId, group, namespaceId)).thenReturn(expectedConfigDetailInfo);
+        when(configHandler.getConfigDetail(dataId, group, namespaceId))
+            .thenReturn(expectedConfigDetailInfo);
         
         // 执行
-        ConfigDetailInfo actualConfigDetailInfo = configProxy.getConfigDetail(dataId, group, namespaceId);
+        ConfigDetailInfo actualConfigDetailInfo =
+            configProxy.getConfigDetail(dataId, group, namespaceId);
         
         // 断言
         assertEquals(expectedConfigDetailInfo, actualConfigDetailInfo);
@@ -130,9 +141,10 @@ public class ConfigProxyTest {
         expectedPage.setTotalCount(10);
         
         when(configHandler.getConfigList(anyInt(), anyInt(), anyString(), anyString(), anyString(),
-                any(Map.class))).thenReturn(expectedPage);
+            any(Map.class))).thenReturn(expectedPage);
         
-        Page<ConfigBasicInfo> result = configProxy.getConfigList(1, 10, DATA_ID, GROUP, NAMESPACE_ID, new HashMap<>());
+        Page<ConfigBasicInfo> result =
+            configProxy.getConfigList(1, 10, DATA_ID, GROUP, NAMESPACE_ID, new HashMap<>());
         
         assertNotNull(result);
         assertEquals(expectedPage.getPageNumber(), result.getPageNumber());
@@ -142,12 +154,15 @@ public class ConfigProxyTest {
     
     @Test
     public void deleteConfig() throws NacosException {
-        when(configHandler.deleteConfig(DATA_ID, GROUP, NAMESPACE_ID, TAG, CLIENT_IP, SRC_USER)).thenReturn(true);
+        when(configHandler.deleteConfig(DATA_ID, GROUP, NAMESPACE_ID, TAG, CLIENT_IP, SRC_USER))
+            .thenReturn(true);
         
-        Boolean result = configProxy.deleteConfig(DATA_ID, GROUP, NAMESPACE_ID, TAG, CLIENT_IP, SRC_USER);
+        Boolean result =
+            configProxy.deleteConfig(DATA_ID, GROUP, NAMESPACE_ID, TAG, CLIENT_IP, SRC_USER);
         
         assertTrue(result);
-        verify(configHandler, times(1)).deleteConfig(DATA_ID, GROUP, NAMESPACE_ID, TAG, CLIENT_IP, SRC_USER);
+        verify(configHandler, times(1)).deleteConfig(DATA_ID, GROUP, NAMESPACE_ID, TAG, CLIENT_IP,
+            SRC_USER);
     }
     
     @Test
@@ -158,15 +173,18 @@ public class ConfigProxyTest {
         expectedPage.setPagesAvailable(1);
         expectedPage.setTotalCount(0);
         
-        when(configHandler.getConfigListByContent(anyString(), anyInt(), anyInt(), anyString(), anyString(),
-                anyString(), anyMap())).thenReturn(expectedPage);
+        when(configHandler.getConfigListByContent(anyString(), anyInt(), anyInt(), anyString(),
+            anyString(),
+            anyString(), anyMap())).thenReturn(expectedPage);
         
-        Page<ConfigBasicInfo> result = configProxy.getConfigListByContent("search", 1, 10, DATA_ID_B, GROUP_B,
+        Page<ConfigBasicInfo> result =
+            configProxy.getConfigListByContent("search", 1, 10, DATA_ID_B, GROUP_B,
                 NAMESPACE_ID_B, new HashMap<>());
         
         assertEquals(expectedPage, result);
-        verify(configHandler, times(1)).getConfigListByContent("search", 1, 10, DATA_ID_B, GROUP_B, NAMESPACE_ID_B,
-                new HashMap<>());
+        verify(configHandler, times(1)).getConfigListByContent("search", 1, 10, DATA_ID_B, GROUP_B,
+            NAMESPACE_ID_B,
+            new HashMap<>());
     }
     
     @Test
@@ -174,13 +192,15 @@ public class ConfigProxyTest {
         List<Long> ids = Arrays.asList(1L, 2L, 3L);
         String clientIp = CLIENT_IP;
         String srcUser = SRC_USER;
+        String namespaceId = NAMESPACE_ID;
         
-        when(configHandler.batchDeleteConfigs(ids, clientIp, srcUser)).thenReturn(true);
+        when(configHandler.batchDeleteConfigs(ids, namespaceId, clientIp, srcUser))
+            .thenReturn(true);
         
-        Boolean result = configProxy.batchDeleteConfigs(ids, clientIp, srcUser);
+        Boolean result = configProxy.batchDeleteConfigs(ids, namespaceId, clientIp, srcUser);
         
         assertTrue(result);
-        verify(configHandler, times(1)).batchDeleteConfigs(ids, clientIp, srcUser);
+        verify(configHandler, times(1)).batchDeleteConfigs(ids, namespaceId, clientIp, srcUser);
     }
     
     @Test
@@ -192,9 +212,11 @@ public class ConfigProxyTest {
         ConfigListenerInfo expectedInfo = new ConfigListenerInfo();
         expectedInfo.setQueryType("config");
         
-        when(configHandler.getListeners(dataId, group, namespaceId, aggregation)).thenReturn(expectedInfo);
+        when(configHandler.getListeners(dataId, group, namespaceId, aggregation))
+            .thenReturn(expectedInfo);
         
-        ConfigListenerInfo actualInfo = configProxy.getListeners(dataId, group, namespaceId, aggregation);
+        ConfigListenerInfo actualInfo =
+            configProxy.getListeners(dataId, group, namespaceId, aggregation);
         
         assertEquals(expectedInfo, actualInfo);
         verify(configHandler, times(1)).getListeners(dataId, group, namespaceId, aggregation);
@@ -209,9 +231,11 @@ public class ConfigProxyTest {
         ConfigListenerInfo expectedInfo = new ConfigListenerInfo();
         expectedInfo.setQueryType("config");
         
-        when(configHandler.getAllSubClientConfigByIp(ip, all, namespaceId, aggregation)).thenReturn(expectedInfo);
+        when(configHandler.getAllSubClientConfigByIp(ip, all, namespaceId, aggregation))
+            .thenReturn(expectedInfo);
         
-        ConfigListenerInfo result = configProxy.getAllSubClientConfigByIp(ip, all, namespaceId, aggregation);
+        ConfigListenerInfo result =
+            configProxy.getAllSubClientConfigByIp(ip, all, namespaceId, aggregation);
         
         assertEquals(expectedInfo.getQueryType(), result.getQueryType());
     }
@@ -227,9 +251,11 @@ public class ConfigProxyTest {
         byte[] expectedBody = "testBody".getBytes();
         ResponseEntity<byte[]> expectedResponse = ResponseEntity.ok(expectedBody);
         
-        when(configHandler.exportConfig(dataId, group, namespaceId, appName, ids)).thenReturn(expectedResponse);
+        when(configHandler.exportConfig(dataId, group, namespaceId, appName, ids))
+            .thenReturn(expectedResponse);
         
-        ResponseEntity<byte[]> actualResponse = configProxy.exportConfigV2(dataId, group, namespaceId, appName, ids);
+        ResponseEntity<byte[]> actualResponse =
+            configProxy.exportConfigV2(dataId, group, namespaceId, appName, ids);
         
         assertEquals(expectedResponse, actualResponse);
         verify(configHandler, times(1)).exportConfig(dataId, group, namespaceId, appName, ids);
@@ -247,19 +273,23 @@ public class ConfigProxyTest {
         expectedData.put("status", "success");
         Result<Map<String, Object>> expectedResult = Result.success(expectedData);
         
-        when(configHandler.importAndPublishConfig(any(), any(), any(), any(), any(), any())).thenReturn(expectedResult);
+        when(configHandler.importAndPublishConfig(any(), any(), any(), any(), any(), any()))
+            .thenReturn(expectedResult);
         
-        Result<Map<String, Object>> actualResult = configProxy.importAndPublishConfig(srcUser, namespaceId, policy,
+        Result<Map<String, Object>> actualResult =
+            configProxy.importAndPublishConfig(srcUser, namespaceId, policy,
                 file, srcIp, requestIpApp);
         
         assertEquals(expectedResult, actualResult);
-        verify(configHandler, times(1)).importAndPublishConfig(srcUser, namespaceId, policy, file, srcIp, requestIpApp);
+        verify(configHandler, times(1)).importAndPublishConfig(srcUser, namespaceId, policy, file,
+            srcIp, requestIpApp);
     }
     
     @Test
     public void cloneConfig() throws NacosException {
         String srcUser = SRC_USER;
-        String namespaceId = "testNamespace";
+        String sourceNamespaceId = "sourceNamespace";
+        String targetNamespaceId = "targetNamespace";
         List<SameNamespaceCloneConfigBean> configBeansList = new ArrayList<>();
         SameConfigPolicy policy = SameConfigPolicy.OVERWRITE;
         String srcIp = CLIENT_IP;
@@ -269,14 +299,54 @@ public class ConfigProxyTest {
         expectedData.put("key", "value");
         Result<Map<String, Object>> expected = Result.success(expectedData);
         
-        when(configHandler.cloneConfig(srcUser, namespaceId, configBeansList, policy, srcIp, requestIpApp)).thenReturn(
+        when(configHandler.cloneConfig(srcUser, sourceNamespaceId, targetNamespaceId,
+            configBeansList, policy, srcIp, requestIpApp)).thenReturn(
                 expected);
         
-        Result<Map<String, Object>> actual = configProxy.cloneConfig(srcUser, namespaceId, configBeansList, policy,
-                srcIp, requestIpApp);
+        Result<Map<String, Object>> actual =
+            configProxy.cloneConfig(srcUser, sourceNamespaceId, targetNamespaceId,
+                configBeansList, policy, srcIp, requestIpApp);
         
         assertEquals(expected, actual);
-        verify(configHandler, times(1)).cloneConfig(srcUser, namespaceId, configBeansList, policy, srcIp, requestIpApp);
+        verify(configCloneSourceReadPermissionChecker, times(1))
+            .checkSourceReadPermission(sourceNamespaceId);
+        verify(configHandler, times(1)).cloneConfig(srcUser, sourceNamespaceId,
+            targetNamespaceId, configBeansList, policy, srcIp, requestIpApp);
+    }
+    
+    @Test
+    public void cloneConfigWithBlankSourceNamespaceChecksTargetNamespace() throws NacosException {
+        String targetNamespaceId = "targetNamespace";
+        List<SameNamespaceCloneConfigBean> configBeansList = new ArrayList<>();
+        Result<Map<String, Object>> expected = Result.success(new HashMap<>());
+        when(configHandler.cloneConfig(SRC_USER, "", targetNamespaceId, configBeansList,
+            SameConfigPolicy.ABORT, CLIENT_IP, "testApp")).thenReturn(expected);
+        
+        Result<Map<String, Object>> actual =
+            configProxy.cloneConfig(SRC_USER, "", targetNamespaceId, configBeansList,
+                SameConfigPolicy.ABORT, CLIENT_IP, "testApp");
+        
+        assertEquals(expected, actual);
+        verify(configCloneSourceReadPermissionChecker, times(1))
+            .checkSourceReadPermission(targetNamespaceId);
+    }
+    
+    @Test
+    public void cloneConfigDeniedBySourceNamespaceReadPermission() throws NacosException {
+        String sourceNamespaceId = "sourceNamespace";
+        String targetNamespaceId = "targetNamespace";
+        List<SameNamespaceCloneConfigBean> configBeansList = new ArrayList<>();
+        
+        doThrow(new AccessException("authorization failed"))
+            .when(configCloneSourceReadPermissionChecker)
+            .checkSourceReadPermission(sourceNamespaceId);
+        
+        assertThrows(AccessException.class,
+            () -> configProxy.cloneConfig(SRC_USER, sourceNamespaceId, targetNamespaceId,
+                configBeansList, SameConfigPolicy.ABORT, CLIENT_IP, "testApp"));
+        
+        verify(configHandler, never()).cloneConfig(any(), any(), any(), any(), any(), any(),
+            any());
     }
     
     @Test
@@ -286,9 +356,11 @@ public class ConfigProxyTest {
         expectedConfigGrayInfo.setConfigTags(TAG);
         expectedConfigGrayInfo.setContent("testContent");
         
-        when(configHandler.queryBetaConfig(DATA_ID_B, GROUP_B, NAMESPACE_ID_B)).thenReturn(expectedConfigGrayInfo);
+        when(configHandler.queryBetaConfig(DATA_ID_B, GROUP_B, NAMESPACE_ID_B))
+            .thenReturn(expectedConfigGrayInfo);
         
-        ConfigGrayInfo actualConfigGrayInfo = configProxy.queryBetaConfig(DATA_ID_B, GROUP_B, NAMESPACE_ID_B);
+        ConfigGrayInfo actualConfigGrayInfo =
+            configProxy.queryBetaConfig(DATA_ID_B, GROUP_B, NAMESPACE_ID_B);
         
         assertEquals(expectedConfigGrayInfo, actualConfigGrayInfo);
         verify(configHandler, times(1)).queryBetaConfig(DATA_ID_B, GROUP_B, NAMESPACE_ID_B);
@@ -303,12 +375,15 @@ public class ConfigProxyTest {
         String requestIpApp = "testApp";
         String srcUser = SRC_USER;
         
-        when(configHandler.removeBetaConfig(dataId, group, namespaceId, remoteIp, requestIpApp, srcUser)).thenReturn(
+        when(configHandler.removeBetaConfig(dataId, group, namespaceId, remoteIp, requestIpApp,
+            srcUser)).thenReturn(
                 true);
         
-        boolean result = configProxy.removeBetaConfig(dataId, group, namespaceId, remoteIp, requestIpApp, srcUser);
+        boolean result = configProxy.removeBetaConfig(dataId, group, namespaceId, remoteIp,
+            requestIpApp, srcUser);
         
         assertTrue(result);
-        verify(configHandler, times(1)).removeBetaConfig(dataId, group, namespaceId, remoteIp, requestIpApp, srcUser);
+        verify(configHandler, times(1)).removeBetaConfig(dataId, group, namespaceId, remoteIp,
+            requestIpApp, srcUser);
     }
 }

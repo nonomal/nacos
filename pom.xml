@@ -88,7 +88,7 @@
     </issueManagement>
     
     <properties>
-        <revision>3.2.0-BETA</revision>
+        <revision>3.3.0-SNAPSHOT</revision>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
         <!-- Compiler settings properties -->
@@ -107,7 +107,7 @@
         <dependency-mediator-maven-plugin.version>1.0.2</dependency-mediator-maven-plugin.version>
         <clirr-maven-plugin.version>2.7</clirr-maven-plugin.version>
         <maven-enforcer-plugin.version>3.5.0</maven-enforcer-plugin.version>
-        <maven-compiler-plugin.version>3.5.1</maven-compiler-plugin.version>
+        <maven-compiler-plugin.version>3.15.0</maven-compiler-plugin.version>
         <maven-javadoc-plugin.version>2.10.4</maven-javadoc-plugin.version>
         <maven-jar-plugin.version>3.2.2</maven-jar-plugin.version>
         <maven-source-plugin.version>3.0.1</maven-source-plugin.version>
@@ -119,7 +119,7 @@
         <spotbugs-maven-plugin.version>4.8.6.2</spotbugs-maven-plugin.version>
         <sonar-maven-plugin.version>3.0.2</sonar-maven-plugin.version>
         <maven-gpg-plugin.version>3.1.0</maven-gpg-plugin.version>
-        <maven-failsafe-plugin.version>3.2.5</maven-failsafe-plugin.version>
+        <maven-failsafe-plugin.version>3.5.4</maven-failsafe-plugin.version>
         <maven-assembly-plugin.version>3.0.0</maven-assembly-plugin.version>
         <maven-checkstyle-plugin.version>3.6.0</maven-checkstyle-plugin.version>
         <maven-easyj-version>1.1.5</maven-easyj-version>
@@ -127,41 +127,45 @@
         <extra-enforcer-rules.version>1.9.0</extra-enforcer-rules.version>
         
         <!-- dependency version -->
-        <nacos.logback.adapter.version>1.1.4</nacos.logback.adapter.version>
-        <spring-boot-dependencies.version>3.4.10</spring-boot-dependencies.version>
+        <nacos.logback.adapter.version>1.1.5</nacos.logback.adapter.version>
+        <spring-boot-dependencies.version>4.0.6</spring-boot-dependencies.version>
+
         <commons-io.version>2.14.0</commons-io.version>
         <commons-collections.version>3.2.2</commons-collections.version>
         <slf4j-api.version>2.0.13</slf4j-api.version>
-        <logback.version>1.5.12</logback.version>
-        <log4j.version>2.25.3</log4j.version>
+        <logback.version>1.5.32</logback.version>
+        <log4j.version>2.25.5</log4j.version>
         
         <mysql-connector-java.version>8.2.0</mysql-connector-java.version>
-        <postgresql.version>42.7.2</postgresql.version>
+        <postgresql.version>42.7.12</postgresql.version>
         <derby.version>10.14.2.0</derby.version>
         <jjwt.version>0.11.2</jjwt.version>
-        <grpc-java.version>1.75.0</grpc-java.version>
+        <grpc-java.version>1.81.0</grpc-java.version>
         <proto-google-common-protos.version>2.17.0</proto-google-common-protos.version>
         <protobuf-java.version>3.25.5</protobuf-java.version>
         <protoc-gen-grpc-java.version>${grpc-java.version}</protoc-gen-grpc-java.version>
         <hessian.version>4.0.63</hessian.version>
         <mockito.version>4.11.0</mockito.version>
+        <byte-buddy-agent.version>1.17.8</byte-buddy-agent.version>
         <HikariCP.version>3.4.2</HikariCP.version>
-        <jraft-core.version>1.4.0</jraft-core.version>
+        <jraft-core.version>1.4.1</jraft-core.version>
         <rpc-grpc-impl.version>${jraft-core.version}</rpc-grpc-impl.version>
+        <rocksdb.version>8.10.2</rocksdb.version>
         <!-- gson version should follow grcp-core dependency -->
         <!-- TODO try to remove direct dependency on gson -->
         <gson.version>2.11.0</gson.version>
         <SnakeYaml.version>2.0</SnakeYaml.version>
         <kubernetes.client.version>22.0.0</kubernetes.client.version>
-        <junit5.version>5.10.2</junit5.version>
-        <mcp.version>0.14.1</mcp.version>
+        <junit6.version>6.0.3</junit6.version>
+        <mcp.version>0.18.2</mcp.version>
         <ojdbc.version>19.7.0.0</ojdbc.version>
 
         <!-- Maven Central Portal -->
-        <central.publishing.maven.version>0.7.0</central.publishing.maven.version>
+        <central.publishing.maven.version>0.11.0</central.publishing.maven.version>
 
-        <!-- override dependency version -->
-        <micrometer.version>1.12.8</micrometer.version>
+        <!-- Override micrometer version for Spring Boot 3.5.x compatibility,
+             see https://github.com/alibaba/nacos/issues/15033 -->
+        <micrometer.version>1.15.11</micrometer.version>
         
         <!-- native -->
         <native-maven-plugin.version>0.10.2</native-maven-plugin.version>
@@ -280,10 +284,10 @@
                 <configuration>
                     <configLocation>style/NacosCheckStyle.xml</configLocation>
                     <includeTestSourceDirectory>true</includeTestSourceDirectory>
-                    <encoding>UTF-8</encoding>
+                    <inputEncoding>UTF-8</inputEncoding>
                     <consoleOutput>true</consoleOutput>
                     <failsOnError>true</failsOnError>
-                    <excludes>**/consistency/entity/**,**/nacos/test/**,**/api/grpc/auto/**,**/istio/**,**/protobuf/**
+                    <excludes>**/consistency/entity/**,**/nacos/test/**,**/api/grpc/auto/**,**/istio/**,**/protobuf/**,**/core/remote/thirdparty/clhm/**
                     </excludes>
                 </configuration>
                 <executions>
@@ -304,6 +308,29 @@
                 </dependencies>
             </plugin>
             <plugin>
+                <groupId>com.diffplug.spotless</groupId>
+                <artifactId>spotless-maven-plugin</artifactId>
+                <version>2.44.4</version>
+                <configuration>
+                    <java>
+                        <excludes>
+                            <exclude>**/api/grpc/auto/**</exclude>
+                            <exclude>**/consistency/entity/**</exclude>
+                            <exclude>**/istio/model/**</exclude>
+                            <exclude>**/common/packagescan/**</exclude>
+                            <exclude>**/core/remote/thirdparty/clhm/**</exclude>
+                            <exclude>**/nacos/test/**</exclude>
+                            <exclude>**/protobuf/**</exclude>
+                        </excludes>
+                        <toggleOffOn/>
+                        <eclipse>
+                            <file>${maven.multiModuleProjectDirectory}/style/nacos-eclipse-formatter.xml</file>
+                        </eclipse>
+                        <removeUnusedImports/>
+                    </java>
+                </configuration>
+            </plugin>
+            <plugin>
                 <groupId>org.apache.rat</groupId>
                 <artifactId>apache-rat-plugin</artifactId>
                 <version>${apache-rat-plugin.version}</version>
@@ -313,6 +340,8 @@
                         <exclude>.travis.yml</exclude>
                         <exclude>codecov.yml</exclude>
                         <exclude>CONTRIBUTING.md</exclude>
+                        <exclude>AGENTS.md</exclude>
+                        <exclude>CLAUDE.md</exclude>
                         <exclude>CODE_OF_CONDUCT.md</exclude>
                         <exclude>CHANGELOG.md</exclude>
                         <exclude>style/codeStyle.md</exclude>
@@ -322,12 +351,14 @@
                         <exclude>doc/*</exclude>
                         <exclude>derby.log</exclude>
                         <exclude>logs/*</exclude>
+                        <exclude>**/target/**</exclude>
                         <exclude>src/main/resources/static/**</exclude>
                         <exclude>**/istio/model/**</exclude>
                         <exclude>**/consistency/entity/**</exclude>
                         <exclude>**/*.txt</exclude>
                         <exclude>**/*.factories</exclude>
                         <exclude>/console-ui/**</exclude>
+                        <exclude>/console-ui-next/**</exclude>
                         <exclude>**/gogo.proto</exclude>
                         <exclude>**/any.proto</exclude>
                         <exclude>src/main/java/com/alibaba/nacos/common/packagescan/classreading/**</exclude>
@@ -341,14 +372,22 @@
                         <exclude>**/predefined-classes-config.json</exclude>
                         <exclude>**/serialization-config.json</exclude>
                         <exclude>**/filter-config.json</exclude>
+                        <!-- Strict JSON Schema cannot carry a source-code comment header. -->
+                        <exclude>specs/schemas/**/*.schema.json</exclude>
+                        <!-- Pinned upstream ARD schema; license and provenance are stored beside it. -->
+                        <exclude>**/ard-spec/**/ai-catalog.schema.json</exclude>
+                        <exclude>**/ard-spec/**/ard.openapi.yaml</exclude>
                         <exclude>**/disk_cache_test/**</exclude>
                         <exclude>**/failover_test/**</exclude>
                         <exclude>lefthook.yml</exclude>
                         <exclude>.vscode/**</exclude>
+                        <exclude>.claude/**</exclude>
                         <exclude>.cursor/**</exclude>
                         <exclude>.agents/**</exclude>
                         <exclude>.qoder/**</exclude>
+                        <exclude>.tools/**</exclude>
                         <exclude>skills/**</exclude>
+                        <exclude>.codegraph/**</exclude>
                     </excludes>
                 </configuration>
                 <executions>
@@ -383,6 +422,7 @@
                         <exclude>**/packagescan/classreading/**</exclude>
                         <exclude>**/packagescan/resource/**</exclude>
                         <exclude>**/packagescan/util/**</exclude>
+                        <exclude>**/core/remote/thirdparty/clhm/**</exclude>
                     </excludes>
                 </configuration>
                 <executions>
@@ -407,6 +447,7 @@
                 <configuration>
                     <argLine>
                         ${argLine}
+                        -javaagent:${settings.localRepository}/net/bytebuddy/byte-buddy-agent/${byte-buddy-agent.version}/byte-buddy-agent-${byte-buddy-agent.version}.jar
                         --add-opens java.base/java.lang=ALL-UNNAMED
                         --add-opens java.base/java.lang.reflect=ALL-UNNAMED
                         --add-opens java.base/java.util=ALL-UNNAMED
@@ -532,43 +573,19 @@
             </properties>
             
             <build>
-
-            </build>
-        </profile>
-        <profile>
-            <!--  Run integration tests for configuration modules separately  -->
-            <id>cit-test</id>
-            <build>
                 <plugins>
                     <plugin>
-                        <groupId>org.apache.maven.plugins</groupId>
-                        <artifactId>maven-surefire-plugin</artifactId>
-                        <version>${maven-surefire-plugin.version}</version>
-                        <configuration>
-                            <testFailureIgnore>false</testFailureIgnore>
-                            <includes>
-                                <include>**/*CITCase.java</include>
-                            </includes>
-                        </configuration>
-                    </plugin>
-                </plugins>
-            </build>
-        </profile>
-        <profile>
-            <!--  Run integration tests for all modules separately  -->
-            <id>nit-test</id>
-            <build>
-                <plugins>
-                    <plugin>
-                        <groupId>org.apache.maven.plugins</groupId>
-                        <artifactId>maven-surefire-plugin</artifactId>
-                        <version>${maven-surefire-plugin.version}</version>
-                        <configuration>
-                            <testFailureIgnore>false</testFailureIgnore>
-                            <includes>
-                                <include>**/naming/*ITCase.java</include>
-                            </includes>
-                        </configuration>
+                        <artifactId>maven-gpg-plugin</artifactId>
+                        <version>${maven-gpg-plugin.version}</version>
+                        <executions>
+                            <execution>
+                                <id>sign-artifacts</id>
+                                <phase>verify</phase>
+                                <goals>
+                                    <goal>sign</goal>
+                                </goals>
+                            </execution>
+                        </executions>
                     </plugin>
                 </plugins>
             </build>
@@ -579,25 +596,6 @@
                 <!-- URL of the ASF SonarQube server -->
                 <sonar.host.url>https://builds.apache.org/analysis</sonar.host.url>
             </properties>
-        </profile>
-        <profile>
-            <id>remove-test-data</id>
-            <build>
-                <plugins>
-                    <plugin>
-                        <groupId>org.apache.maven.plugins</groupId>
-                        <artifactId>maven-clean-plugin</artifactId>
-                        <configuration>
-                            <followSymLinks>false</followSymLinks>
-                            <filesets>
-                                <fileset>
-                                    <directory>${user.home}/nacos/data</directory>
-                                </fileset>
-                            </filesets>
-                        </configuration>
-                    </plugin>
-                </plugins>
-            </build>
         </profile>
     </profiles>
     <reporting>
@@ -641,7 +639,7 @@
         <module>client-basic</module>
         <module>ai</module>
         <module>copilot</module>
-        <module>mcp-registry-adaptor</module>
+        <module>ai-registry-adaptor</module>
     </modules>
     
     <!-- Default dependencies in all subprojects -->
@@ -676,7 +674,7 @@
             <dependency>
                 <groupId>org.junit</groupId>
                 <artifactId>junit-bom</artifactId>
-                <version>${junit5.version}</version>
+                <version>${junit6.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
@@ -865,6 +863,16 @@
             </dependency>
             <dependency>
                 <groupId>${project.groupId}</groupId>
+                <artifactId>nacos-ai-plugin</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>${project.groupId}</groupId>
+                <artifactId>nacos-visibility-plugin</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>${project.groupId}</groupId>
                 <artifactId>nacos-auth</artifactId>
                 <version>${project.version}</version>
             </dependency>
@@ -880,7 +888,7 @@
             </dependency>
             <dependency>
                 <groupId>com.alibaba.nacos</groupId>
-                <artifactId>nacos-mcp-registry-adaptor</artifactId>
+                <artifactId>nacos-ai-registry-adaptor</artifactId>
                 <version>${project.version}</version>
             </dependency>
             
@@ -972,7 +980,7 @@
                 <artifactId>derby</artifactId>
                 <version>${derby.version}</version>
             </dependency>
-            
+
             <!-- JRaft -->
             <dependency>
                 <groupId>com.alipay.sofa</groupId>
@@ -1016,6 +1024,12 @@
                         <artifactId>*</artifactId>
                     </exclusion>
                 </exclusions>
+            </dependency>
+
+            <dependency>
+                <groupId>org.rocksdb</groupId>
+                <artifactId>rocksdbjni</artifactId>
+                <version>${rocksdb.version}</version>
             </dependency>
             
             <!-- Third-party libs -->
@@ -1093,23 +1107,10 @@
             
             <dependency>
                 <groupId>io.micrometer</groupId>
-                <artifactId>micrometer-core</artifactId>
+                <artifactId>micrometer-bom</artifactId>
                 <version>${micrometer.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>io.micrometer</groupId>
-                <artifactId>micrometer-registry-prometheus</artifactId>
-                <version>${micrometer.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>io.micrometer</groupId>
-                <artifactId>micrometer-registry-influx</artifactId>
-                <version>${micrometer.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>io.micrometer</groupId>
-                <artifactId>micrometer-registry-elastic</artifactId>
-                <version>${micrometer.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
             </dependency>
             
             <dependency>
@@ -1148,4 +1149,3 @@
     </dependencyManagement>
 
 </project>
-

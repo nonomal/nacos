@@ -16,6 +16,7 @@
 
 package com.alibaba.nacos.core.trace;
 
+import com.alibaba.nacos.api.plugin.PluginStateCheckerHolder;
 import com.alibaba.nacos.common.notify.Event;
 import com.alibaba.nacos.common.trace.DeregisterInstanceReason;
 import com.alibaba.nacos.common.trace.event.TraceEvent;
@@ -44,6 +45,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Executor;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -72,11 +74,13 @@ class NacosCombinedTraceSubscriberTest {
     
     @SuppressWarnings("unchecked")
     private Map<String, NacosTraceSubscriber> getTraceSubscribers() {
-        return (Map<String, NacosTraceSubscriber>) ReflectionTestUtils.getField(NacosTracePluginManager.getInstance(), "traceSubscribers");
+        return (Map<String, NacosTraceSubscriber>) ReflectionTestUtils
+            .getField(NacosTracePluginManager.getInstance(), "traceSubscribers");
     }
     
     @BeforeEach
     void setUp() throws Exception {
+        PluginStateCheckerHolder.setInstance(null);
         Map<String, NacosTraceSubscriber> traceSubscribers = getTraceSubscribers();
         traceSubscribers.put("instanceSubscriber", mockInstanceSubscriber);
         traceSubscribers.put("serviceSubscriber", mockServiceSubscriber);
@@ -111,6 +115,7 @@ class NacosCombinedTraceSubscriberTest {
         traceSubscribers.remove("instanceSubscriber");
         traceSubscribers.remove("otherSubscriber");
         combinedTraceSubscriber.shutdown();
+        PluginStateCheckerHolder.setInstance(null);
     }
     
     @Test
@@ -132,63 +137,74 @@ class NacosCombinedTraceSubscriberTest {
     @Test
     void testOnEvent() {
         // Test RegisterInstanceTraceEvent.
-        RegisterInstanceTraceEvent registerInstanceTraceEvent = new RegisterInstanceTraceEvent(1L, "", true, "", "", "", "", 1);
-        doThrow(new RuntimeException("test")).when(mockInstanceSubscriber).onEvent(registerInstanceTraceEvent);
+        RegisterInstanceTraceEvent registerInstanceTraceEvent =
+            new RegisterInstanceTraceEvent(1L, "", true, "", "", "", "", 1);
+        doThrow(new RuntimeException("test")).when(mockInstanceSubscriber)
+            .onEvent(registerInstanceTraceEvent);
         combinedTraceSubscriber.onEvent(registerInstanceTraceEvent);
         verify(mockInstanceSubscriber, times(1)).onEvent(registerInstanceTraceEvent);
         verify(mockServiceSubscriber, never()).onEvent(registerInstanceTraceEvent);
         verify(mockOtherSubscriber, never()).onEvent(registerInstanceTraceEvent);
         // Test DeregisterInstanceTraceEvent.
-        DeregisterInstanceTraceEvent deregisterInstanceTraceEvent = new DeregisterInstanceTraceEvent(1L, "", true,
+        DeregisterInstanceTraceEvent deregisterInstanceTraceEvent =
+            new DeregisterInstanceTraceEvent(1L, "", true,
                 DeregisterInstanceReason.REQUEST, "", "", "", "", 1);
         combinedTraceSubscriber.onEvent(deregisterInstanceTraceEvent);
         verify(mockInstanceSubscriber, times(1)).onEvent(deregisterInstanceTraceEvent);
         verify(mockServiceSubscriber, never()).onEvent(deregisterInstanceTraceEvent);
         verify(mockOtherSubscriber, never()).onEvent(deregisterInstanceTraceEvent);
         // Test UpdateInstanceTraceEvent.
-        UpdateInstanceTraceEvent updateInstanceTraceEvent = new UpdateInstanceTraceEvent(1L, "", "", "", "", "", 123, null);
+        UpdateInstanceTraceEvent updateInstanceTraceEvent =
+            new UpdateInstanceTraceEvent(1L, "", "", "", "", "", 123, null);
         combinedTraceSubscriber.onEvent(updateInstanceTraceEvent);
         verify(mockInstanceSubscriber, times(1)).onEvent(updateInstanceTraceEvent);
         verify(mockServiceSubscriber, never()).onEvent(updateInstanceTraceEvent);
         verify(mockOtherSubscriber, never()).onEvent(updateInstanceTraceEvent);
         // Test RegisterServiceTraceEvent.
-        RegisterServiceTraceEvent registerServiceTraceEvent = new RegisterServiceTraceEvent(1L, "", "", "");
+        RegisterServiceTraceEvent registerServiceTraceEvent =
+            new RegisterServiceTraceEvent(1L, "", "", "");
         combinedTraceSubscriber.onEvent(registerServiceTraceEvent);
         verify(mockInstanceSubscriber, never()).onEvent(registerServiceTraceEvent);
         verify(mockServiceSubscriber, times(1)).onEvent(registerServiceTraceEvent);
         verify(mockOtherSubscriber, never()).onEvent(registerServiceTraceEvent);
         // Test DeregisterServiceTraceEvent.
-        DeregisterServiceTraceEvent deregisterServiceTraceEvent = new DeregisterServiceTraceEvent(1L, "", "", "");
+        DeregisterServiceTraceEvent deregisterServiceTraceEvent =
+            new DeregisterServiceTraceEvent(1L, "", "", "");
         combinedTraceSubscriber.onEvent(deregisterServiceTraceEvent);
         verify(mockInstanceSubscriber, never()).onEvent(deregisterServiceTraceEvent);
         verify(mockServiceSubscriber, times(1)).onEvent(deregisterServiceTraceEvent);
         verify(mockOtherSubscriber, never()).onEvent(deregisterServiceTraceEvent);
         // Test SubscribeServiceTraceEvent.
-        SubscribeServiceTraceEvent subscribeServiceTraceEvent = new SubscribeServiceTraceEvent(1L, "", "", "", "");
+        SubscribeServiceTraceEvent subscribeServiceTraceEvent =
+            new SubscribeServiceTraceEvent(1L, "", "", "", "");
         combinedTraceSubscriber.onEvent(subscribeServiceTraceEvent);
         verify(mockInstanceSubscriber, never()).onEvent(subscribeServiceTraceEvent);
         verify(mockServiceSubscriber, times(1)).onEvent(subscribeServiceTraceEvent);
         verify(mockOtherSubscriber, never()).onEvent(subscribeServiceTraceEvent);
         // Test UnsubscribeServiceTraceEvent.
-        UnsubscribeServiceTraceEvent unsubscribeServiceTraceEvent = new UnsubscribeServiceTraceEvent(1L, "", "", "", "");
+        UnsubscribeServiceTraceEvent unsubscribeServiceTraceEvent =
+            new UnsubscribeServiceTraceEvent(1L, "", "", "", "");
         combinedTraceSubscriber.onEvent(unsubscribeServiceTraceEvent);
         verify(mockInstanceSubscriber, never()).onEvent(unsubscribeServiceTraceEvent);
         verify(mockServiceSubscriber, times(1)).onEvent(unsubscribeServiceTraceEvent);
         verify(mockOtherSubscriber, never()).onEvent(unsubscribeServiceTraceEvent);
         // Test UpdateServiceTraceEvent.
-        UpdateServiceTraceEvent updateServiceTraceEvent = new UpdateServiceTraceEvent(1L, "", "", "", null);
+        UpdateServiceTraceEvent updateServiceTraceEvent =
+            new UpdateServiceTraceEvent(1L, "", "", "", null);
         combinedTraceSubscriber.onEvent(updateServiceTraceEvent);
         verify(mockInstanceSubscriber, never()).onEvent(updateServiceTraceEvent);
         verify(mockServiceSubscriber, times(1)).onEvent(updateServiceTraceEvent);
         verify(mockOtherSubscriber, never()).onEvent(updateServiceTraceEvent);
         // Test PushServiceTraceEvent.
-        PushServiceTraceEvent pushServiceTraceEvent = new PushServiceTraceEvent(1L, 1L, 1L, 1L, "", "", "", "", 1);
+        PushServiceTraceEvent pushServiceTraceEvent =
+            new PushServiceTraceEvent(1L, 1L, 1L, 1L, "", "", "", "", 1);
         combinedTraceSubscriber.onEvent(pushServiceTraceEvent);
         verify(mockInstanceSubscriber, never()).onEvent(pushServiceTraceEvent);
         verify(mockServiceSubscriber, times(1)).onEvent(pushServiceTraceEvent);
         verify(mockOtherSubscriber, never()).onEvent(pushServiceTraceEvent);
         // Test HealthStateChangeTraceEvent.
-        HealthStateChangeTraceEvent healthStateChangeTraceEvent = new HealthStateChangeTraceEvent(1L, "", "", "", "", 8867, true, "");
+        HealthStateChangeTraceEvent healthStateChangeTraceEvent =
+            new HealthStateChangeTraceEvent(1L, "", "", "", "", 8867, true, "");
         combinedTraceSubscriber.onEvent(healthStateChangeTraceEvent);
         verify(mockInstanceSubscriber, never()).onEvent(healthStateChangeTraceEvent);
         verify(mockServiceSubscriber, never()).onEvent(healthStateChangeTraceEvent);
@@ -209,8 +225,39 @@ class NacosCombinedTraceSubscriberTest {
             return null;
         }).when(executor).execute(any(Runnable.class));
         when(mockInstanceSubscriber.executor()).thenReturn(executor);
-        RegisterInstanceTraceEvent event = new RegisterInstanceTraceEvent(1L, "", true, "", "", "", "", 1);
+        RegisterInstanceTraceEvent event =
+            new RegisterInstanceTraceEvent(1L, "", true, "", "", "", "", 1);
         combinedTraceSubscriber.onEvent(event);
+        verify(mockInstanceSubscriber).onEvent(event);
+    }
+    
+    @Test
+    void testOnEventSkipsSubscriberDisabledAfterConstruction() {
+        when(mockInstanceSubscriber.getName()).thenReturn("instanceSubscriber");
+        PluginStateCheckerHolder.setInstance(
+            (pluginType, pluginName) -> !"instanceSubscriber".equals(pluginName));
+        RegisterInstanceTraceEvent event =
+            new RegisterInstanceTraceEvent(1L, "", true, "", "", "", "", 1);
+        
+        combinedTraceSubscriber.onEvent(event);
+        
+        verify(mockInstanceSubscriber, never()).onEvent(event);
+    }
+    
+    @Test
+    void testOnEventDispatchesSubscriberEnabledAfterConstruction() {
+        combinedTraceSubscriber.shutdown();
+        when(mockInstanceSubscriber.getName()).thenReturn("instanceSubscriber");
+        AtomicBoolean enabled = new AtomicBoolean(false);
+        PluginStateCheckerHolder.setInstance(
+            (pluginType, pluginName) -> !"instanceSubscriber".equals(pluginName) || enabled.get());
+        combinedTraceSubscriber = new NacosCombinedTraceSubscriber(NamingTraceEvent.class);
+        enabled.set(true);
+        RegisterInstanceTraceEvent event =
+            new RegisterInstanceTraceEvent(1L, "", true, "", "", "", "", 1);
+        
+        combinedTraceSubscriber.onEvent(event);
+        
         verify(mockInstanceSubscriber).onEvent(event);
     }
 }

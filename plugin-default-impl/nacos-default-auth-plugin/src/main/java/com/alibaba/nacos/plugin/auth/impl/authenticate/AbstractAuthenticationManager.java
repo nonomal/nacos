@@ -29,6 +29,7 @@ import com.alibaba.nacos.plugin.auth.impl.users.NacosUserDetails;
 import com.alibaba.nacos.plugin.auth.impl.users.NacosUserService;
 import com.alibaba.nacos.plugin.auth.impl.utils.PasswordEncoderUtil;
 import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 
 /**
  * AbstractAuthenticationManager.
@@ -38,16 +39,15 @@ import jakarta.servlet.http.HttpServletRequest;
  */
 public class AbstractAuthenticationManager implements IAuthenticationManager {
     
-    private static final String USER_NOT_FOUND_MESSAGE = "User not found! Please check user exist or password is right!";
-    
     protected NacosUserService userDetailsService;
     
     protected TokenManagerDelegate jwtTokenManager;
     
     protected NacosRoleService roleService;
     
-    public AbstractAuthenticationManager(NacosUserService userDetailsService, TokenManagerDelegate jwtTokenManager,
-            NacosRoleService roleService) {
+    public AbstractAuthenticationManager(NacosUserService userDetailsService,
+        TokenManagerDelegate jwtTokenManager,
+        NacosRoleService roleService) {
         this.userDetailsService = userDetailsService;
         this.jwtTokenManager = jwtTokenManager;
         this.roleService = roleService;
@@ -56,11 +56,18 @@ public class AbstractAuthenticationManager implements IAuthenticationManager {
     @Override
     public NacosUser authenticate(String username, String rawPassword) throws AccessException {
         if (StringUtils.isBlank(username) || StringUtils.isBlank(rawPassword)) {
-            throw new AccessException(USER_NOT_FOUND_MESSAGE);
+            throw new AccessException(AuthConstants.INVALID_CREDENTIALS_MESSAGE);
         }
-        NacosUserDetails nacosUserDetails = (NacosUserDetails) userDetailsService.loadUserByUsername(username);
-        if (nacosUserDetails == null || !PasswordEncoderUtil.matches(rawPassword, nacosUserDetails.getPassword())) {
-            throw new AccessException(USER_NOT_FOUND_MESSAGE);
+        NacosUserDetails nacosUserDetails = null;
+        try {
+            nacosUserDetails =
+                (NacosUserDetails) userDetailsService.loadUserByUsername(username);
+        } catch (UsernameNotFoundException ignored) {
+            throw new AccessException(AuthConstants.INVALID_CREDENTIALS_MESSAGE);
+        }
+        if (nacosUserDetails == null
+            || !PasswordEncoderUtil.matches(rawPassword, nacosUserDetails.getPassword())) {
+            throw new AccessException(AuthConstants.INVALID_CREDENTIALS_MESSAGE);
         }
         return new NacosUser(nacosUserDetails.getUsername(), jwtTokenManager.createToken(username));
     }
@@ -68,7 +75,7 @@ public class AbstractAuthenticationManager implements IAuthenticationManager {
     @Override
     public NacosUser authenticate(String token) throws AccessException {
         if (StringUtils.isBlank(token)) {
-            throw new AccessException(USER_NOT_FOUND_MESSAGE);
+            throw new AccessException(AuthConstants.INVALID_CREDENTIALS_MESSAGE);
         }
         return jwtTokenManager.parseToken(token);
     }
@@ -108,7 +115,8 @@ public class AbstractAuthenticationManager implements IAuthenticationManager {
     
     private String resolveToken(HttpServletRequest request) {
         String bearerToken = request.getHeader(AuthConstants.AUTHORIZATION_HEADER);
-        if (StringUtils.isNotBlank(bearerToken) && bearerToken.startsWith(AuthConstants.TOKEN_PREFIX)) {
+        if (StringUtils.isNotBlank(bearerToken)
+            && bearerToken.startsWith(AuthConstants.TOKEN_PREFIX)) {
             return bearerToken.substring(AuthConstants.TOKEN_PREFIX.length());
         }
         bearerToken = request.getParameter(Constants.ACCESS_TOKEN);

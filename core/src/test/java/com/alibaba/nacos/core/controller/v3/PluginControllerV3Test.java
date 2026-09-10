@@ -21,7 +21,10 @@ import com.alibaba.nacos.api.model.v2.ErrorCode;
 import com.alibaba.nacos.api.model.v2.Result;
 import com.alibaba.nacos.api.plugin.PluginType;
 import com.alibaba.nacos.core.plugin.PluginManager;
+import com.alibaba.nacos.core.plugin.config.PluginConfigResolution;
+import com.alibaba.nacos.core.plugin.model.PluginConfigSourceType;
 import com.alibaba.nacos.core.plugin.model.PluginInfo;
+import com.alibaba.nacos.core.plugin.model.vo.PluginConfigValueMeta;
 import com.alibaba.nacos.core.plugin.model.vo.PluginDetailVO;
 import com.alibaba.nacos.core.plugin.model.vo.PluginInfoVO;
 import org.junit.jupiter.api.Test;
@@ -83,6 +86,8 @@ class PluginControllerV3Test {
         assertEquals("auth:nacos", result.getData().get(0).getPluginId());
         assertEquals("auth", result.getData().get(0).getPluginType());
         assertEquals("nacos", result.getData().get(0).getPluginName());
+        assertTrue(result.getData().get(0).getTypeCritical());
+        assertEquals("EXCLUSIVE", result.getData().get(0).getExecutionMode());
         assertTrue(result.getData().get(0).getExclusive());
     }
     
@@ -112,8 +117,15 @@ class PluginControllerV3Test {
     @Test
     void testGetPluginDetail() throws NacosApiException {
         PluginInfo info = createPluginInfo("auth:nacos", PluginType.AUTH, "nacos");
-        info.setConfig(Collections.singletonMap("key", "value"));
+        Map<String, String> config = Collections.singletonMap("key", "value");
+        PluginConfigValueMeta meta = new PluginConfigValueMeta();
+        meta.setKey("key");
+        meta.setSource(PluginConfigSourceType.RUNTIME_PERSISTED);
+        meta.setOverridden(false);
+        info.setConfig(config);
         when(unifiedPluginManager.getPlugin("auth:nacos")).thenReturn(Optional.of(info));
+        when(unifiedPluginManager.resolvePluginConfig(info))
+            .thenReturn(new PluginConfigResolution(config, Collections.singletonMap("key", meta)));
         
         Result<PluginDetailVO> result = pluginControllerV3.getPluginDetail("auth", "nacos");
         
@@ -122,7 +134,24 @@ class PluginControllerV3Test {
         assertEquals("auth:nacos", result.getData().getPluginId());
         assertEquals("auth", result.getData().getPluginType());
         assertEquals("nacos", result.getData().getPluginName());
+        assertTrue(result.getData().getTypeCritical());
+        assertEquals("EXCLUSIVE", result.getData().getExecutionMode());
+        assertTrue(result.getData().getExclusive());
         assertNotNull(result.getData().getConfig());
+        assertEquals(PluginConfigSourceType.RUNTIME_PERSISTED,
+            result.getData().getConfigValueMetas().get("key").getSource());
+    }
+    
+    @Test
+    void testGetPluginDetailFallsBackToPluginConfig() throws NacosApiException {
+        PluginInfo info = createPluginInfo("auth:nacos", PluginType.AUTH, "nacos");
+        info.setConfig(Collections.singletonMap("legacy", "value"));
+        when(unifiedPluginManager.getPlugin("auth:nacos")).thenReturn(Optional.of(info));
+        when(unifiedPluginManager.resolvePluginConfig(info)).thenReturn(null);
+        
+        Result<PluginDetailVO> result = pluginControllerV3.getPluginDetail("auth", "nacos");
+        
+        assertEquals("value", result.getData().getConfig().get("legacy"));
     }
     
     @Test
@@ -130,7 +159,7 @@ class PluginControllerV3Test {
         when(unifiedPluginManager.getPlugin("auth:missing")).thenReturn(Optional.empty());
         
         NacosApiException ex = assertThrows(NacosApiException.class,
-                () -> pluginControllerV3.getPluginDetail("auth", "missing"));
+            () -> pluginControllerV3.getPluginDetail("auth", "missing"));
         
         assertEquals(HttpStatus.NOT_FOUND.value(), ex.getErrCode());
         assertTrue(ex.getErrMsg().contains("Plugin not found"));
@@ -148,7 +177,7 @@ class PluginControllerV3Test {
     @Test
     void testUpdatePluginStatusBlankTypeThrows() {
         NacosApiException ex = assertThrows(NacosApiException.class,
-                () -> pluginControllerV3.updatePluginStatus("", "nacos", true, false));
+            () -> pluginControllerV3.updatePluginStatus("", "nacos", true, false));
         
         assertEquals(HttpStatus.BAD_REQUEST.value(), ex.getErrCode());
     }
@@ -156,7 +185,7 @@ class PluginControllerV3Test {
     @Test
     void testUpdatePluginStatusBlankNameThrows() {
         assertThrows(NacosApiException.class,
-                () -> pluginControllerV3.updatePluginStatus("auth", "  ", true, false));
+            () -> pluginControllerV3.updatePluginStatus("auth", "  ", true, false));
     }
     
     @Test
@@ -165,7 +194,8 @@ class PluginControllerV3Test {
         config.put("key", "value");
         String configJson = "{\"key\":\"value\"}";
         
-        Result<String> result = pluginControllerV3.updatePluginConfig("auth", "nacos", configJson, false);
+        Result<String> result =
+            pluginControllerV3.updatePluginConfig("auth", "nacos", configJson, false);
         
         assertNotNull(result);
         assertEquals(ErrorCode.SUCCESS.getCode(), result.getCode());
@@ -175,12 +205,13 @@ class PluginControllerV3Test {
     @Test
     void testUpdatePluginConfigNullConfigThrows() {
         assertThrows(Exception.class,
-                () -> pluginControllerV3.updatePluginConfig("auth", "nacos", "null", false));
+            () -> pluginControllerV3.updatePluginConfig("auth", "nacos", "null", false));
     }
     
     @Test
     void testGetPluginListDatasourceDialectExclusive() {
-        PluginInfo info = createPluginInfo("datasource-dialect:mysql", PluginType.DATASOURCE_DIALECT, "mysql");
+        PluginInfo info =
+            createPluginInfo("datasource-dialect:mysql", PluginType.DATASOURCE_DIALECT, "mysql");
         when(unifiedPluginManager.listAllPlugins()).thenReturn(Collections.singletonList(info));
         
         Result<List<PluginInfoVO>> result = pluginControllerV3.getPluginList(null);

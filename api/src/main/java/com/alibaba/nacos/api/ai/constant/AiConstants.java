@@ -48,7 +48,7 @@ public class AiConstants {
         public static final String MCP_STATUS_ACTIVE = McpServerStatusEnum.ACTIVE.getName();
         
         public static final String MCP_STATUS_DEPRECATED = McpServerStatusEnum.DEPRECATED.getName();
-
+        
         public static final String MCP_STATUS_DELETED = McpServerStatusEnum.DELETED.getName();
         
         public static final String OFFICIAL_TRANSPORT_SSE = "sse";
@@ -56,19 +56,89 @@ public class AiConstants {
         public static final String OFFICIAL_TRANSPORT_STREAMABLE = "streamable-http";
     }
     
+    /**
+     * Agent constants.
+     */
+    public static class Agent {
+        
+        public static final String RESOURCE_STATUS_ENABLE = "enable";
+        
+        public static final String RESOURCE_STATUS_DISABLE = "disable";
+        
+        public static final String VERSION_STATUS_DRAFT = "draft";
+        
+        public static final String VERSION_STATUS_REVIEWING = "reviewing";
+        
+        public static final String VERSION_STATUS_REVIEWED = "reviewed";
+        
+        public static final String VERSION_STATUS_ONLINE = "online";
+        
+        public static final String VERSION_STATUS_OFFLINE = "offline";
+    }
+    
     public static final String AI_TRANSPORT_MODE = "nacosAiTransportMode";
+    
+    /**
+     * Transport override for MCP; inherits {@link #AI_TRANSPORT_MODE}.
+     */
+    public static final String AI_MCP_TRANSPORT_MODE = "nacosAiMcpTransportMode";
+    
+    /**
+     * Transport override for native Agent/RAD (legacy A2A always uses gRPC); inherits {@link #AI_TRANSPORT_MODE}.
+     */
+    public static final String AI_AGENT_TRANSPORT_MODE = "nacosAiAgentTransportMode";
+    
+    /**
+     * Transport override for Skill (currently uses HTTP for every mode); inherits {@link #AI_TRANSPORT_MODE}.
+     */
+    public static final String AI_SKILL_TRANSPORT_MODE = "nacosAiSkillTransportMode";
+    
+    /**
+     * Transport override for AgentSpec (currently uses HTTP for every mode); inherits {@link #AI_TRANSPORT_MODE}.
+     */
+    public static final String AI_AGENT_SPEC_TRANSPORT_MODE = "nacosAiAgentSpecTransportMode";
+    
+    /**
+     * Transport override for Prompt queries and polling; inherits {@link #AI_TRANSPORT_MODE}.
+     */
+    public static final String AI_PROMPT_TRANSPORT_MODE = "nacosAiPromptTransportMode";
     
     public static final String AI_TRANSPORT_MODE_GRPC = "grpc";
     
     public static final String AI_TRANSPORT_MODE_HTTP = "http";
     
+    public static final String AI_TRANSPORT_MODE_AUTO = "auto";
+    
     public static final String AI_REQUEST_TIMEOUT = "nacosAiRequestTimeout";
     
-    public static final String AI_MCP_SERVER_CACHE_UPDATE_INTERVAL = "nacosAiMcpServerCacheUpdateInterval";
+    public static final String AI_MCP_SERVER_CACHE_UPDATE_INTERVAL =
+        "nacosAiMcpServerCacheUpdateInterval";
     
-    public static final String AI_AGENT_CARD_CACHE_UPDATE_INTERVAL = "nacosAiAgentCardCacheUpdateInterval";
+    public static final String AI_AGENT_CARD_CACHE_UPDATE_INTERVAL =
+        "nacosAiAgentCardCacheUpdateInterval";
     
     public static final String AI_PROMPT_CACHE_UPDATE_INTERVAL = "nacosAiPromptCacheUpdateInterval";
+    
+    public static final String AI_SKILL_CACHE_UPDATE_INTERVAL = "nacosAiSkillCacheUpdateInterval";
+    
+    public static final String AI_AGENTSPEC_CACHE_UPDATE_INTERVAL =
+        "nacosAiAgentSpecCacheUpdateInterval";
+    
+    /**
+     * Soft watermark for Agent Endpoint publication entries retained by one AI SDK instance.
+     */
+    public static final String AI_AGENT_ENDPOINT_MAX_PUBLICATIONS =
+        "nacosAiAgentEndpointMaxPublications";
+    
+    /**
+     * Maximum local Agent Discover polling subscriptions retained by one AI SDK instance.
+     */
+    public static final String AI_AGENT_DISCOVERY_MAX_SUBSCRIPTIONS =
+        "nacosAiAgentDiscoveryMaxSubscriptions";
+    
+    public static final int DEFAULT_AI_AGENT_ENDPOINT_MAX_PUBLICATIONS = 100;
+    
+    public static final int DEFAULT_AI_AGENT_DISCOVERY_MAX_SUBSCRIPTIONS = 300;
     
     public static final long DEFAULT_AI_CACHE_UPDATE_INTERVAL = 10000L;
     

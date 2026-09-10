@@ -18,6 +18,7 @@ package com.alibaba.nacos.core.distributed;
 
 import com.alibaba.nacos.consistency.cp.CPProtocol;
 import com.alibaba.nacos.core.cluster.ServerMemberManager;
+import com.alibaba.nacos.core.distributed.raft.auth.JRaftAuthUpgradeCoordinator;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -35,21 +36,23 @@ import static org.mockito.Mockito.mock;
  */
 @ExtendWith(MockitoExtension.class)
 class ConsistencyConfigurationTest {
-
+    
     @Mock
     private ServerMemberManager memberManager;
-
+    
     @Test
     void testStrongAgreementProtocolReturnsProtocol() throws Exception {
         ConsistencyConfiguration config = new ConsistencyConfiguration();
-        CPProtocol protocol = config.strongAgreementProtocol(memberManager);
+        CPProtocol protocol = config.strongAgreementProtocol(memberManager,
+            mock(JRaftAuthUpgradeCoordinator.class));
         assertNotNull(protocol);
     }
-
+    
     @Test
     void testGetProtocolUsesBuilderWhenIteratorEmpty() throws Exception {
         ConsistencyConfiguration config = new ConsistencyConfiguration();
-        Method getProtocol = ConsistencyConfiguration.class.getDeclaredMethod("getProtocol", Class.class, Callable.class);
+        Method getProtocol = ConsistencyConfiguration.class.getDeclaredMethod("getProtocol",
+            Class.class, Callable.class);
         getProtocol.setAccessible(true);
         CPProtocol mockProtocol = mock(CPProtocol.class);
         Callable<CPProtocol> builder = () -> mockProtocol;

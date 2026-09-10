@@ -23,6 +23,7 @@ import com.alibaba.nacos.api.model.NacosForm;
 import com.alibaba.nacos.api.model.v2.ErrorCode;
 import com.alibaba.nacos.api.selector.NoneSelector;
 import com.alibaba.nacos.api.selector.Selector;
+import com.alibaba.nacos.api.selector.SelectorFactory;
 import com.alibaba.nacos.api.utils.StringUtils;
 
 import java.util.HashMap;
@@ -41,6 +42,10 @@ import java.util.Map;
 public class Service implements NacosForm {
     
     private static final long serialVersionUID = -3470985546826874460L;
+    
+    static {
+        SelectorFactory.preload();
+    }
     
     private String namespaceId;
     
@@ -121,7 +126,7 @@ public class Service implements NacosForm {
         fillDefaultValue();
         if (StringUtils.isBlank(name)) {
             throw new NacosApiException(NacosException.INVALID_PARAM, ErrorCode.PARAMETER_MISSING,
-                    "Required parameter 'name' type String is not present");
+                "Required parameter 'name' type String is not present");
         }
     }
     

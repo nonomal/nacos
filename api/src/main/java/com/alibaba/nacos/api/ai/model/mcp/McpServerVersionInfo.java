@@ -21,28 +21,37 @@ import com.alibaba.nacos.api.ai.model.mcp.registry.ServerVersionDetail;
 import java.util.List;
 
 /**
- * McpServerVersionInfo.
+ * Legacy MCP serving Manifest aggregate.
+ *
+ * <p>This compatibility model contains the MCP Server definition, the historical latest
+ * published Version, and the complete published-Version descriptor list. It does not represent
+ * one exact management Version and must not be used in place of
+ * {@link McpServerVersionSummary} or {@link McpServerVersionDetail}.</p>
+ *
  * @author xinluo
+ * @see McpServerVersionSummary
+ * @see McpServerVersionDetail
  */
-@SuppressWarnings({"checkstyle:MethodName", "checkstyle:ParameterName", "checkstyle:MemberName", "checkstyle:SummaryJavadoc"})
+@SuppressWarnings({"checkstyle:MethodName", "checkstyle:ParameterName", "checkstyle:MemberName",
+    "checkstyle:SummaryJavadoc"})
 public class McpServerVersionInfo extends McpServerBasicInfo {
-
+    
     private String latestPublishedVersion;
-
+    
     private List<ServerVersionDetail> versionDetails;
-
+    
     public String getLatestPublishedVersion() {
         return latestPublishedVersion;
     }
-
+    
     public void setLatestPublishedVersion(String latestPublishedVersion) {
         this.latestPublishedVersion = latestPublishedVersion;
     }
-
+    
     public List<ServerVersionDetail> getVersionDetails() {
         return versionDetails;
     }
-
+    
     public void setVersions(List<ServerVersionDetail> versionDetails) {
         this.versionDetails = versionDetails;
     }

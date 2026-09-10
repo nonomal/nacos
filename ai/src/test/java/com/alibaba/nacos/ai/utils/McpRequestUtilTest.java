@@ -17,8 +17,10 @@
 package com.alibaba.nacos.ai.utils;
 
 import com.alibaba.nacos.ai.form.mcp.admin.McpDetailForm;
+import com.alibaba.nacos.ai.form.mcp.admin.McpServerDraftForm;
 import com.alibaba.nacos.api.ai.constant.AiConstants;
 import com.alibaba.nacos.api.ai.model.mcp.McpEndpointSpec;
+import com.alibaba.nacos.api.ai.model.mcp.McpResourceSpecification;
 import com.alibaba.nacos.api.ai.model.mcp.McpServerBasicInfo;
 import com.alibaba.nacos.api.ai.model.mcp.McpServiceRef;
 import com.alibaba.nacos.api.ai.model.mcp.McpToolSpecification;
@@ -36,24 +38,29 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class McpRequestUtilTest {
     
-    private static final String MCP_SERVER_SPEC_OLD = "{\"protocol\":\"stdio\",\"name\":\"nacos-mcp-server\","
+    private static final String MCP_SERVER_SPEC_OLD =
+        "{\"protocol\":\"stdio\",\"name\":\"nacos-mcp-server\","
             + "\"description\":\"nacos local mcp server(test version)\",\"version\":\"0.1.0\",\"enabled\":true,\"localServerConfig\":{}}";
     
     private static final String MCP_SERVER_SPEC_NEW =
-            "{\"protocol\":\"stdio\",\"frontProtocol\":\"stdio\",\"name\":\"nacos-mcp-server\","
-                    + "\"id\":\"\",\"description\":\"nacos local mcp server(test version)\",\"versionDetail\":{\"version\":\"1.0.0\"},"
-                    + "\"enabled\":true,\"localServerConfig\":{}}'";
+        "{\"protocol\":\"stdio\",\"frontProtocol\":\"stdio\",\"name\":\"nacos-mcp-server\","
+            + "\"id\":\"\",\"description\":\"nacos local mcp server(test version)\",\"versionDetail\":{\"version\":\"1.0.0\"},"
+            + "\"enabled\":true,\"localServerConfig\":{}}'";
     
     private static final String MCP_TOOL_SPEC =
-            "{\"tools\":[{\"name\":\"list_namespace\",\"description\":\"list namespace in nacos\","
-                + "\"inputSchema\":{\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"string\",\"description\":\"aaa\"}}},"
-                + "\"outputSchema\":{\"type\":\"object\",\"properties\":{\"result\":{\"type\":\"string\"}}}}],"
-                    + "\"toolsMeta\":{\"list_namespace\":{\"invokeContext\":{\"path\":\"/xxx\",\"method\":\"GET\"},\"enabled\":true,"
-                    + "\"templates\":{\"json-go-tamplate\":{\"templateType\":\"string\",\"requestTemplate\":{\"url\":\"\",\"method\":\"GET\","
-                    + "\"headers\":[],\"argsToJsonBody\":false,\"argsToUrlParam\":true,\"argsToFormBody\":true,\"body\":\"string\"},"
-                    + "\"responseTemplate\":{\"body\":\"string\"}}}}}}";
+        "{\"tools\":[{\"name\":\"list_namespace\",\"description\":\"list namespace in nacos\","
+            + "\"inputSchema\":{\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"string\",\"description\":\"aaa\"}}},"
+            + "\"outputSchema\":{\"type\":\"object\",\"properties\":{\"result\":{\"type\":\"string\"}}}}],"
+            + "\"toolsMeta\":{\"list_namespace\":{\"invokeContext\":{\"path\":\"/xxx\",\"method\":\"GET\"},\"enabled\":true,"
+            + "\"templates\":{\"json-go-tamplate\":{\"templateType\":\"string\",\"requestTemplate\":{\"url\":\"\",\"method\":\"GET\","
+            + "\"headers\":[],\"argsToJsonBody\":false,\"argsToUrlParam\":true,\"argsToFormBody\":true,\"body\":\"string\"},"
+            + "\"responseTemplate\":{\"body\":\"string\"}}}}}}";
     
-    private static final String MCP_ENDPOINT_SPEC = "{\"type\":\"DIRECT\",\"data\":{\"address\":\"127.0.0.1\",\"port\":8848}}";
+    private static final String MCP_ENDPOINT_SPEC =
+        "{\"type\":\"DIRECT\",\"data\":{\"address\":\"127.0.0.1\",\"port\":8848}}";
+    
+    private static final String MCP_RESOURCE_SPEC =
+        "{\"resources\":[{\"name\":\"readme\",\"uri\":\"file:///README.md\",\"description\":\"test resource\"}]}";
     
     @Test
     void parseMcpServerBasicInfoWithOldData() throws NacosApiException {
@@ -101,11 +108,27 @@ class McpRequestUtilTest {
     }
     
     @Test
+    void parseMcpServerBasicInfoShouldPreserveCompatibilityIdInputs() throws NacosApiException {
+        McpDetailForm outerIdForm = new McpDetailForm();
+        outerIdForm.setServerSpecification(MCP_SERVER_SPEC_NEW);
+        outerIdForm.setMcpId("4d7939c0-72ea-4ef4-b232-418d1e16b45c");
+        assertEquals("4d7939c0-72ea-4ef4-b232-418d1e16b45c",
+            McpRequestUtil.parseMcpServerBasicInfo(outerIdForm).getId());
+        
+        McpDetailForm nestedIdForm = new McpDetailForm();
+        nestedIdForm.setServerSpecification(MCP_SERVER_SPEC_NEW.replace("\"id\":\"\"",
+            "\"id\":\"nested-id\""));
+        nestedIdForm.setMcpId("outer-id");
+        assertEquals("nested-id",
+            McpRequestUtil.parseMcpServerBasicInfo(nestedIdForm).getId());
+    }
+    
+    @Test
     void parseMcpServerBasicInfoWithWrongData() {
         McpDetailForm mcpForm = new McpDetailForm();
         mcpForm.setServerSpecification("{");
         assertThrows(NacosApiException.class, () -> McpRequestUtil.parseMcpServerBasicInfo(mcpForm),
-                "serverSpecification or toolSpecification is invalid. Can't be parsed.");
+            "serverSpecification or toolSpecification is invalid. Can't be parsed.");
     }
     
     @Test
@@ -119,7 +142,7 @@ class McpRequestUtilTest {
         McpDetailForm mcpForm = new McpDetailForm();
         mcpForm.setToolSpecification("{");
         assertThrows(NacosApiException.class, () -> McpRequestUtil.parseMcpTools(mcpForm),
-                "serverSpecification or toolSpecification is invalid. Can't be parsed.");
+            "serverSpecification or toolSpecification is invalid. Can't be parsed.");
     }
     
     @Test
@@ -141,6 +164,22 @@ class McpRequestUtilTest {
     }
     
     @Test
+    void parseMcpResourcesWithoutResourceSpec() throws NacosApiException {
+        McpDetailForm mcpForm = new McpDetailForm();
+        assertNull(McpRequestUtil.parseMcpResources(mcpForm));
+    }
+    
+    @Test
+    void parseMcpResourcesSuccess() throws NacosApiException {
+        McpDetailForm mcpForm = new McpDetailForm();
+        mcpForm.setResourceSpecification(MCP_RESOURCE_SPEC);
+        McpResourceSpecification actual = McpRequestUtil.parseMcpResources(mcpForm);
+        assertEquals(1, actual.getResources().size());
+        assertEquals("readme", actual.getResources().get(0).get("name"));
+        assertEquals("file:///README.md", actual.getResources().get(0).get("uri"));
+    }
+    
+    @Test
     void parseMcpEndpointSpecForStdioType() throws NacosApiException {
         McpServerBasicInfo mcpServerBasicInfo = new McpServerBasicInfo();
         mcpServerBasicInfo.setProtocol(AiConstants.Mcp.MCP_PROTOCOL_STDIO);
@@ -154,8 +193,8 @@ class McpRequestUtilTest {
         McpServerBasicInfo mcpServerBasicInfo = new McpServerBasicInfo();
         mcpServerBasicInfo.setProtocol(AiConstants.Mcp.MCP_PROTOCOL_SSE);
         assertThrows(NacosApiException.class,
-                () -> McpRequestUtil.parseMcpEndpointSpec(mcpServerBasicInfo, new McpDetailForm()),
-                "request parameter `endpointSpecification` is required if mcp server type not `local`.");
+            () -> McpRequestUtil.parseMcpEndpointSpec(mcpServerBasicInfo, new McpDetailForm()),
+            "request parameter `endpointSpecification` is required if mcp server type not `local`.");
     }
     
     @Test
@@ -192,6 +231,96 @@ class McpRequestUtilTest {
     
     @Test
     void transferToMcpServiceRefForOther() {
-        assertThrows(IllegalArgumentException.class, () -> McpRequestUtil.transferToMcpServiceRef(new Object()));
+        assertThrows(IllegalArgumentException.class,
+            () -> McpRequestUtil.transferToMcpServiceRef(new Object()));
+    }
+    
+    @Test
+    void parseLifecycleDraftUsesOuterNameAndVersionWithoutCompatibilityId()
+        throws NacosApiException {
+        McpServerDraftForm form = lifecycleDraftForm(
+            "{\"protocol\":\"stdio\",\"description\":\"draft\",\"enabled\":true}");
+        form.setToolSpecification(MCP_TOOL_SPEC);
+        form.setResourceSpecification(MCP_RESOURCE_SPEC);
+        
+        McpServerBasicInfo server = McpRequestUtil.parseMcpServerBasicInfo(form);
+        
+        assertEquals("nacos-mcp-server", server.getName());
+        assertEquals("1.0.0", server.getVersion());
+        assertEquals("1.0.0", server.getVersionDetail().getVersion());
+        assertNull(server.getId());
+        assertEquals(1, McpRequestUtil.parseMcpTools(form).getTools().size());
+        assertEquals(1, McpRequestUtil.parseMcpResources(form).getResources().size());
+        assertNull(McpRequestUtil.parseMcpEndpointSpec(server, form));
+    }
+    
+    @Test
+    void parseLifecycleDraftRejectsNestedIdAndIdentityConflicts() {
+        McpServerDraftForm idForm = lifecycleDraftForm(
+            "{\"protocol\":\"stdio\",\"id\":\"legacy-id\"}");
+        assertThrows(NacosApiException.class,
+            () -> McpRequestUtil.parseMcpServerBasicInfo(idForm));
+        
+        McpServerDraftForm nameForm = lifecycleDraftForm(
+            "{\"protocol\":\"stdio\",\"name\":\"another\"}");
+        assertThrows(NacosApiException.class,
+            () -> McpRequestUtil.parseMcpServerBasicInfo(nameForm));
+        
+        McpServerDraftForm versionForm = lifecycleDraftForm(
+            "{\"protocol\":\"stdio\",\"versionDetail\":{\"version\":\"2.0.0\"}}");
+        assertThrows(NacosApiException.class,
+            () -> McpRequestUtil.parseMcpServerBasicInfo(versionForm));
+        
+        McpServerDraftForm topLevelVersionForm = lifecycleDraftForm(
+            "{\"protocol\":\"stdio\",\"version\":\"2.0.0\","
+                + "\"versionDetail\":{\"version\":\"1.0.0\"}}");
+        assertThrows(NacosApiException.class,
+            () -> McpRequestUtil.parseMcpServerBasicInfo(topLevelVersionForm));
+        
+        McpServerDraftForm nullForm = lifecycleDraftForm("null");
+        assertThrows(NacosApiException.class,
+            () -> McpRequestUtil.parseMcpServerBasicInfo(nullForm));
+    }
+    
+    @Test
+    void parseLifecycleDraftValidatesRemoteEndpointAndOptionalContent() throws NacosApiException {
+        McpServerDraftForm form = lifecycleDraftForm(
+            "{\"protocol\":\"sse\",\"name\":\"nacos-mcp-server\","
+                + "\"versionDetail\":{\"version\":\"1.0.0\"}}");
+        McpServerBasicInfo server = McpRequestUtil.parseMcpServerBasicInfo(form);
+        assertNull(McpRequestUtil.parseMcpTools(form));
+        assertNull(McpRequestUtil.parseMcpResources(form));
+        assertThrows(NacosApiException.class,
+            () -> McpRequestUtil.parseMcpEndpointSpec(server, form));
+        
+        form.setEndpointSpecification("null");
+        assertThrows(NacosApiException.class,
+            () -> McpRequestUtil.parseMcpEndpointSpec(server, form));
+        
+        form.setEndpointSpecification(MCP_ENDPOINT_SPEC);
+        assertEquals(AiConstants.Mcp.MCP_ENDPOINT_TYPE_DIRECT,
+            McpRequestUtil.parseMcpEndpointSpec(server, form).getType());
+    }
+    
+    @Test
+    void parseMcpServerLabelsTreatsBlankAsClearAndRejectsInvalidJson()
+        throws NacosApiException {
+        assertTrue(McpRequestUtil.parseMcpServerLabels(null).isEmpty());
+        assertTrue(McpRequestUtil.parseMcpServerLabels(" ").isEmpty());
+        assertEquals("1.0.0",
+            McpRequestUtil.parseMcpServerLabels("{\"stable\":\"1.0.0\"}").get("stable"));
+        assertThrows(NacosApiException.class,
+            () -> McpRequestUtil.parseMcpServerLabels("{"));
+        assertThrows(NacosApiException.class,
+            () -> McpRequestUtil.parseMcpServerLabels("null"));
+    }
+    
+    private McpServerDraftForm lifecycleDraftForm(String serverSpecification) {
+        McpServerDraftForm result = new McpServerDraftForm();
+        result.setNamespaceId(AiConstants.Mcp.MCP_DEFAULT_NAMESPACE);
+        result.setMcpName("nacos-mcp-server");
+        result.setVersion("1.0.0");
+        result.setServerSpecification(serverSpecification);
+        return result;
     }
 }

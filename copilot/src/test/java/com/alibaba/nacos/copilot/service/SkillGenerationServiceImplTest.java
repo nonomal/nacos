@@ -23,16 +23,11 @@ import com.alibaba.nacos.copilot.model.ConversationHistory;
 import com.alibaba.nacos.copilot.model.ConversationMessage;
 import com.alibaba.nacos.copilot.model.SkillGenerationRequest;
 import com.alibaba.nacos.copilot.model.SkillGenerationResponse;
-import io.agentscope.core.ReActAgent;
-import io.agentscope.core.agent.Event;
-import io.agentscope.core.agent.StreamOptions;
-import io.agentscope.core.message.Msg;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import reactor.core.publisher.Flux;
 
 import java.lang.reflect.Method;
 import java.util.ArrayList;
@@ -42,10 +37,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -74,69 +66,23 @@ class SkillGenerationServiceImplTest {
     }
     
     @Test
-    void testGenerateSkillWithNullRequest() {
-        // When & Then
-        RuntimeException exception = assertThrows(RuntimeException.class,
-                () -> skillGenerationService.generateSkill(null));
-        assertTrue(exception.getCause() instanceof NacosException);
-        assertEquals(NacosException.INVALID_PARAM, ((NacosException) exception.getCause()).getErrCode());
-    }
-    
-    @Test
-    void testGenerateSkillWithBlankBackgroundInfo() {
-        // Given
-        SkillGenerationRequest request = new SkillGenerationRequest();
-        request.setBackgroundInfo("");
-        
-        // When & Then
-        RuntimeException exception = assertThrows(RuntimeException.class,
-                () -> skillGenerationService.generateSkill(request));
-        assertTrue(exception.getCause() instanceof NacosException);
-    }
-    
-    @Test
-    void testGenerateSkillWhenCopilotDisabled() {
-        // Given
-        SkillGenerationRequest request = createValidRequest();
-        when(agentManager.isEnabled()).thenReturn(false);
-        
-        // When & Then
-        RuntimeException exception = assertThrows(RuntimeException.class,
-                () -> skillGenerationService.generateSkill(request));
-        assertTrue(exception.getCause() instanceof NacosException);
-        assertTrue(exception.getMessage().contains("AI 功能未启用"));
-    }
-    
-    @Test
-    void testGenerateSkillWhenAgentCreationFails() {
-        // Given
-        SkillGenerationRequest request = createValidRequest();
-        when(agentManager.isEnabled()).thenReturn(true);
-        when(agentManager.createAgent(anyString())).thenReturn(null);
-        
-        // When & Then
-        RuntimeException exception = assertThrows(RuntimeException.class,
-                () -> skillGenerationService.generateSkill(request));
-        assertTrue(exception.getCause() instanceof NacosException);
-        assertTrue(exception.getMessage().contains("Failed to create Copilot agent"));
-    }
-    
-    @Test
     void testGenerateSkillStreamWithNullRequest() {
         // Given
-        StreamResponseCallback<SkillGenerationResponse> callback = new StreamResponseCallback<SkillGenerationResponse>() {
-            @Override
-            public void onNext(SkillGenerationResponse response) {
-            }
-            
-            @Override
-            public void onError(Throwable t) {
-            }
-            
-            @Override
-            public void onComplete() {
-            }
-        };
+        StreamResponseCallback<SkillGenerationResponse> callback =
+            new StreamResponseCallback<SkillGenerationResponse>() {
+                
+                @Override
+                public void onNext(SkillGenerationResponse response) {
+                }
+                
+                @Override
+                public void onError(Throwable t) {
+                }
+                
+                @Override
+                public void onComplete() {
+                }
+            };
         
         // When
         skillGenerationService.generateSkillStream(null, callback);
@@ -151,19 +97,21 @@ class SkillGenerationServiceImplTest {
         // Given
         SkillGenerationRequest request = createValidRequest();
         when(agentManager.isEnabled()).thenReturn(false);
-        StreamResponseCallback<SkillGenerationResponse> callback = new StreamResponseCallback<SkillGenerationResponse>() {
-            @Override
-            public void onNext(SkillGenerationResponse response) {
-            }
-            
-            @Override
-            public void onError(Throwable t) {
-            }
-            
-            @Override
-            public void onComplete() {
-            }
-        };
+        StreamResponseCallback<SkillGenerationResponse> callback =
+            new StreamResponseCallback<SkillGenerationResponse>() {
+                
+                @Override
+                public void onNext(SkillGenerationResponse response) {
+                }
+                
+                @Override
+                public void onError(Throwable t) {
+                }
+                
+                @Override
+                public void onComplete() {
+                }
+            };
         
         // When
         skillGenerationService.generateSkillStream(request, callback);
@@ -180,24 +128,26 @@ class SkillGenerationServiceImplTest {
         io.agentscope.core.ReActAgent mockAgent = mock(io.agentscope.core.ReActAgent.class);
         when(agentManager.createAgent(anyString())).thenReturn(mockAgent);
         
-        reactor.core.publisher.Flux<io.agentscope.core.agent.Event> mockFlux = 
-                reactor.core.publisher.Flux.empty();
-        when(mockAgent.stream(any(io.agentscope.core.message.Msg.class), 
-                any(io.agentscope.core.agent.StreamOptions.class))).thenReturn(mockFlux);
+        reactor.core.publisher.Flux<io.agentscope.core.agent.Event> mockFlux =
+            reactor.core.publisher.Flux.empty();
+        when(mockAgent.stream(any(io.agentscope.core.message.Msg.class),
+            any(io.agentscope.core.agent.StreamOptions.class))).thenReturn(mockFlux);
         
-        StreamResponseCallback<SkillGenerationResponse> callback = new StreamResponseCallback<SkillGenerationResponse>() {
-            @Override
-            public void onNext(SkillGenerationResponse response) {
-            }
-            
-            @Override
-            public void onError(Throwable t) {
-            }
-            
-            @Override
-            public void onComplete() {
-            }
-        };
+        StreamResponseCallback<SkillGenerationResponse> callback =
+            new StreamResponseCallback<SkillGenerationResponse>() {
+                
+                @Override
+                public void onNext(SkillGenerationResponse response) {
+                }
+                
+                @Override
+                public void onError(Throwable t) {
+                }
+                
+                @Override
+                public void onComplete() {
+                }
+            };
         
         // When
         skillGenerationService.generateSkillStream(request, callback);
@@ -214,24 +164,26 @@ class SkillGenerationServiceImplTest {
         io.agentscope.core.ReActAgent mockAgent = mock(io.agentscope.core.ReActAgent.class);
         when(agentManager.createAgent(anyString())).thenReturn(mockAgent);
         
-        reactor.core.publisher.Flux<io.agentscope.core.agent.Event> mockFlux = 
-                reactor.core.publisher.Flux.empty();
-        when(mockAgent.stream(any(io.agentscope.core.message.Msg.class), 
-                any(io.agentscope.core.agent.StreamOptions.class))).thenReturn(mockFlux);
+        reactor.core.publisher.Flux<io.agentscope.core.agent.Event> mockFlux =
+            reactor.core.publisher.Flux.empty();
+        when(mockAgent.stream(any(io.agentscope.core.message.Msg.class),
+            any(io.agentscope.core.agent.StreamOptions.class))).thenReturn(mockFlux);
         
-        StreamResponseCallback<SkillGenerationResponse> callback = new StreamResponseCallback<SkillGenerationResponse>() {
-            @Override
-            public void onNext(SkillGenerationResponse response) {
-            }
-            
-            @Override
-            public void onError(Throwable t) {
-            }
-            
-            @Override
-            public void onComplete() {
-            }
-        };
+        StreamResponseCallback<SkillGenerationResponse> callback =
+            new StreamResponseCallback<SkillGenerationResponse>() {
+                
+                @Override
+                public void onNext(SkillGenerationResponse response) {
+                }
+                
+                @Override
+                public void onError(Throwable t) {
+                }
+                
+                @Override
+                public void onComplete() {
+                }
+            };
         
         // When
         skillGenerationService.generateSkillStream(request, callback);
@@ -254,11 +206,13 @@ class SkillGenerationServiceImplTest {
      */
     private SkillGenerationRequest createValidRequestWithHistory() {
         SkillGenerationRequest request = createValidRequest();
-        com.alibaba.nacos.copilot.model.ConversationHistory history = new com.alibaba.nacos.copilot.model.ConversationHistory();
+        com.alibaba.nacos.copilot.model.ConversationHistory history =
+            new com.alibaba.nacos.copilot.model.ConversationHistory();
         history.setTitle("Test Conversation");
         history.setContext("Test context");
         
-        com.alibaba.nacos.copilot.model.ConversationMessage message = new com.alibaba.nacos.copilot.model.ConversationMessage();
+        com.alibaba.nacos.copilot.model.ConversationMessage message =
+            new com.alibaba.nacos.copilot.model.ConversationMessage();
         message.setType("user");
         message.setContent("User input");
         history.setMessages(java.util.Collections.singletonList(message));
@@ -283,76 +237,6 @@ class SkillGenerationServiceImplTest {
     }
     
     @Test
-    void testGenerateSkillSuccess() throws Exception {
-        // Given
-        SkillGenerationRequest request = createValidRequest();
-        when(agentManager.isEnabled()).thenReturn(true);
-        ReActAgent mockAgent = mock(ReActAgent.class);
-        when(agentManager.createAgent(anyString())).thenReturn(mockAgent);
-        
-        // Create mock events with valid JSON response
-        String jsonResponse = "{\"skill\":{\"name\":\"test-skill\",\"description\":\"Test skill\"}}";
-        Event mockEvent = mock(Event.class);
-        Msg mockMsg = mock(Msg.class);
-        when(mockEvent.getMessage()).thenReturn(mockMsg);
-        when(mockMsg.getTextContent()).thenReturn(jsonResponse);
-        
-        Flux<Event> mockFlux = Flux.just(mockEvent);
-        when(mockAgent.stream(any(Msg.class), any(StreamOptions.class))).thenReturn(mockFlux);
-        
-        // When
-        SkillGenerationResponse response = skillGenerationService.generateSkill(request);
-        
-        // Then
-        assertNotNull(response);
-        assertTrue(response.isDone());
-        assertNotNull(response.getSkill());
-        assertEquals("test-skill", response.getSkill().getName());
-    }
-    
-    @Test
-    void testGenerateSkillWithJsonCodeBlock() throws Exception {
-        // Given
-        SkillGenerationRequest request = createValidRequest();
-        when(agentManager.isEnabled()).thenReturn(true);
-        ReActAgent mockAgent = mock(ReActAgent.class);
-        when(agentManager.createAgent(anyString())).thenReturn(mockAgent);
-        
-        String jsonResponse = "```json\n{\"skill\":{\"name\":\"test-skill\"}}\n```";
-        Event mockEvent = mock(Event.class);
-        Msg mockMsg = mock(Msg.class);
-        when(mockEvent.getMessage()).thenReturn(mockMsg);
-        when(mockMsg.getTextContent()).thenReturn(jsonResponse);
-        
-        Flux<Event> mockFlux = Flux.just(mockEvent);
-        when(mockAgent.stream(any(Msg.class), any(StreamOptions.class))).thenReturn(mockFlux);
-        
-        // When
-        SkillGenerationResponse response = skillGenerationService.generateSkill(request);
-        
-        // Then
-        assertNotNull(response);
-        assertTrue(response.isDone());
-    }
-    
-    @Test
-    void testGenerateSkillWithErrorInStream() {
-        // Given
-        SkillGenerationRequest request = createValidRequest();
-        when(agentManager.isEnabled()).thenReturn(true);
-        ReActAgent mockAgent = mock(ReActAgent.class);
-        when(agentManager.createAgent(anyString())).thenReturn(mockAgent);
-        
-        Flux<Event> mockFlux = Flux.error(new RuntimeException("Stream error"));
-        when(mockAgent.stream(any(Msg.class), any(StreamOptions.class))).thenReturn(mockFlux);
-        
-        // When & Then
-        RuntimeException exception = assertThrows(RuntimeException.class,
-                () -> skillGenerationService.generateSkill(request));
-        assertTrue(exception.getMessage().contains("Failed to generate skill"));
-    }
-    
-    @Test
     void testGenerateSkillStreamWithAgentCreationFailure() {
         // Given
         SkillGenerationRequest request = createValidRequest();
@@ -360,20 +244,22 @@ class SkillGenerationServiceImplTest {
         when(agentManager.createAgent(anyString())).thenReturn(null);
         
         final AtomicReference<Throwable> errorRef = new AtomicReference<>();
-        StreamResponseCallback<SkillGenerationResponse> callback = new StreamResponseCallback<SkillGenerationResponse>() {
-            @Override
-            public void onNext(SkillGenerationResponse response) {
-            }
-            
-            @Override
-            public void onError(Throwable t) {
-                errorRef.set(t);
-            }
-            
-            @Override
-            public void onComplete() {
-            }
-        };
+        StreamResponseCallback<SkillGenerationResponse> callback =
+            new StreamResponseCallback<SkillGenerationResponse>() {
+                
+                @Override
+                public void onNext(SkillGenerationResponse response) {
+                }
+                
+                @Override
+                public void onError(Throwable t) {
+                    errorRef.set(t);
+                }
+                
+                @Override
+                public void onComplete() {
+                }
+            };
         
         // When
         skillGenerationService.generateSkillStream(request, callback);
@@ -423,7 +309,8 @@ class SkillGenerationServiceImplTest {
         request.setConversationHistory(history);
         
         // Use reflection to test private method
-        Method method = SkillGenerationServiceImpl.class.getDeclaredMethod("buildUserMessage", SkillGenerationRequest.class);
+        Method method = SkillGenerationServiceImpl.class.getDeclaredMethod("buildUserMessage",
+            SkillGenerationRequest.class);
         method.setAccessible(true);
         
         // When
@@ -457,7 +344,8 @@ class SkillGenerationServiceImplTest {
         request.setSelectedMcpTools(tools);
         
         // Use reflection to test private method
-        Method method = SkillGenerationServiceImpl.class.getDeclaredMethod("buildUserMessage", SkillGenerationRequest.class);
+        Method method = SkillGenerationServiceImpl.class.getDeclaredMethod("buildUserMessage",
+            SkillGenerationRequest.class);
         method.setAccessible(true);
         
         // When
@@ -468,156 +356,6 @@ class SkillGenerationServiceImplTest {
         assertTrue(result.contains("tool1"));
         assertTrue(result.contains("Description 1"));
         assertTrue(result.contains("tool2"));
-    }
-    
-    @Test
-    void testParseGenerationResultWithSkillField() throws Exception {
-        // Given
-        String jsonContent = "{\"skill\":{\"name\":\"test-skill\",\"description\":\"Test\"}}";
-        SkillGenerationResponse response = new SkillGenerationResponse();
-        
-        // Use reflection to test private method
-        Method method = SkillGenerationServiceImpl.class.getDeclaredMethod("parseGenerationResult", String.class, SkillGenerationResponse.class);
-        method.setAccessible(true);
-        
-        // When
-        method.invoke(skillGenerationService, jsonContent, response);
-        
-        // Then
-        assertTrue(response.isDone());
-        assertNotNull(response.getSkill());
-        assertEquals("test-skill", response.getSkill().getName());
-    }
-    
-    @Test
-    void testParseGenerationResultWithoutSkillField() throws Exception {
-        // Given
-        String jsonContent = "{\"name\":\"test-skill\",\"description\":\"Test\"}";
-        SkillGenerationResponse response = new SkillGenerationResponse();
-        
-        // Use reflection to test private method
-        Method method = SkillGenerationServiceImpl.class.getDeclaredMethod("parseGenerationResult", String.class, SkillGenerationResponse.class);
-        method.setAccessible(true);
-        
-        // When
-        method.invoke(skillGenerationService, jsonContent, response);
-        
-        // Then
-        assertTrue(response.isDone());
-        assertNotNull(response.getSkill());
-        assertEquals("test-skill", response.getSkill().getName());
-    }
-    
-    @Test
-    void testParseGenerationResultWithInvalidJson() throws Exception {
-        // Given
-        String invalidJson = "not a json";
-        SkillGenerationResponse response = new SkillGenerationResponse();
-        
-        // Use reflection to test private method
-        Method method = SkillGenerationServiceImpl.class.getDeclaredMethod("parseGenerationResult", String.class, SkillGenerationResponse.class);
-        method.setAccessible(true);
-        
-        // When
-        method.invoke(skillGenerationService, invalidJson, response);
-        
-        // Then
-        assertTrue(response.isDone());
-    }
-    
-    @Test
-    void testExtractJsonFromContentWithJsonCodeBlock() throws Exception {
-        // Given
-        String content = "Some text\n```json\n{\"key\":\"value\"}\n```\nMore text";
-        
-        // Use reflection to test private method
-        Method method = SkillGenerationServiceImpl.class.getDeclaredMethod("extractJsonFromContent", String.class);
-        method.setAccessible(true);
-        
-        // When
-        String result = (String) method.invoke(skillGenerationService, content);
-        
-        // Then
-        assertNotNull(result);
-        assertTrue(result.contains("key"));
-    }
-    
-    @Test
-    void testExtractJsonFromContentWithCodeBlock() throws Exception {
-        // Given
-        String content = "Some text\n```\n{\"key\":\"value\"}\n```\nMore text";
-        
-        // Use reflection to test private method
-        Method method = SkillGenerationServiceImpl.class.getDeclaredMethod("extractJsonFromContent", String.class);
-        method.setAccessible(true);
-        
-        // When
-        String result = (String) method.invoke(skillGenerationService, content);
-        
-        // Then
-        assertNotNull(result);
-    }
-    
-    @Test
-    void testExtractJsonFromContentWithJsonObject() throws Exception {
-        // Given
-        String content = "Some text {\"key\":\"value\"} more text";
-        
-        // Use reflection to test private method
-        Method method = SkillGenerationServiceImpl.class.getDeclaredMethod("extractJsonFromContent", String.class);
-        method.setAccessible(true);
-        
-        // When
-        String result = (String) method.invoke(skillGenerationService, content);
-        
-        // Then
-        assertNotNull(result);
-    }
-    
-    @Test
-    void testNormalizeResourceStructureWithNestedResources() throws Exception {
-        // Given
-        Map<String, Object> skillMap = new HashMap<>();
-        Map<String, Object> resources = new HashMap<>();
-        Map<String, Object> scripts = new HashMap<>();
-        Map<String, Object> script = new HashMap<>();
-        script.put("type", "script");
-        script.put("path", "/scripts/test.sh");
-        script.put("content", "echo test");
-        scripts.put("test", script);
-        resources.put("scripts", scripts);
-        skillMap.put("resources", resources);
-        
-        // Use reflection to test private method
-        Method method = SkillGenerationServiceImpl.class.getDeclaredMethod("normalizeResourceStructure", Map.class);
-        method.setAccessible(true);
-        
-        // When
-        method.invoke(skillGenerationService, skillMap);
-        
-        // Then
-        assertNull(skillMap.get("resources"));
-        assertNotNull(skillMap.get("resource"));
-        @SuppressWarnings("unchecked")
-        Map<String, Object> resourceMap = (Map<String, Object>) skillMap.get("resource");
-        assertNotNull(resourceMap.get("test"));
-    }
-    
-    @Test
-    void testNormalizeResourceStructureWithoutResources() throws Exception {
-        // Given
-        Map<String, Object> skillMap = new HashMap<>();
-        skillMap.put("name", "test-skill");
-        
-        // Use reflection to test private method
-        Method method = SkillGenerationServiceImpl.class.getDeclaredMethod("normalizeResourceStructure", Map.class);
-        method.setAccessible(true);
-        
-        // When
-        method.invoke(skillGenerationService, skillMap);
-        
-        // Then
-        assertNotNull(skillMap.get("resource"));
     }
     
 }

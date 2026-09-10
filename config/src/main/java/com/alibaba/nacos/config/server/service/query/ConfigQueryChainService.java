@@ -18,6 +18,7 @@ package com.alibaba.nacos.config.server.service.query;
 
 import com.alibaba.nacos.common.spi.NacosServiceLoader;
 import com.alibaba.nacos.config.server.exception.NacosConfigException;
+import com.alibaba.nacos.config.server.service.dump.disk.ConfigDiskPathException;
 import com.alibaba.nacos.config.server.service.query.enums.ResponseCode;
 import com.alibaba.nacos.config.server.service.query.model.ConfigQueryChainRequest;
 import com.alibaba.nacos.config.server.service.query.model.ConfigQueryChainResponse;
@@ -42,15 +43,18 @@ public class ConfigQueryChainService {
     
     public ConfigQueryChainService() {
         String curChain = EnvUtil.getProperty("nacos.config.query.chain.builder", "nacos");
-        Optional<ConfigQueryHandlerChainBuilder> optionalBuilder = NacosServiceLoader.load(ConfigQueryHandlerChainBuilder.class)
+        Optional<ConfigQueryHandlerChainBuilder> optionalBuilder =
+            NacosServiceLoader.load(ConfigQueryHandlerChainBuilder.class)
                 .stream()
                 .filter(builder -> builder.getName().equals(curChain))
                 .findFirst();
         if (optionalBuilder.isPresent()) {
             chain = optionalBuilder.get().build();
-            LOGGER.info("ConfigQueryHandlerChain has been initialized successfully with chain: {}", curChain);
+            LOGGER.info("ConfigQueryHandlerChain has been initialized successfully with chain: {}",
+                curChain);
         } else {
-            String errorMessage = "No suitable ConfigQueryHandlerChainBuilder found for name: " + curChain;
+            String errorMessage =
+                "No suitable ConfigQueryHandlerChainBuilder found for name: " + curChain;
             LOGGER.error(errorMessage);
             throw new NacosConfigException(errorMessage);
         }
@@ -65,9 +69,13 @@ public class ConfigQueryChainService {
     public ConfigQueryChainResponse handle(ConfigQueryChainRequest request) {
         try {
             return chain.handle(request);
+        } catch (ConfigDiskPathException e) {
+            LOGGER.error("[Error] Config query rejected unsafe disk path: {}", e.getMessage(), e);
+            return ConfigQueryChainResponse.buildFailResponse(e.getErrCode(), e.getMessage());
         } catch (Exception e) {
             LOGGER.error("[Error] Fail to handle ConfigQueryChainRequest", e);
-            return ConfigQueryChainResponse.buildFailResponse(ResponseCode.FAIL.getCode(), e.getMessage());
+            return ConfigQueryChainResponse.buildFailResponse(ResponseCode.FAIL.getCode(),
+                e.getMessage());
         }
     }
 }

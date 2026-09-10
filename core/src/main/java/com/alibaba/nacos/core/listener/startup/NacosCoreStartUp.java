@@ -23,6 +23,7 @@ import com.alibaba.nacos.common.executor.ThreadPoolManager;
 import com.alibaba.nacos.common.notify.NotifyCenter;
 import com.alibaba.nacos.common.utils.StringUtils;
 import com.alibaba.nacos.core.exception.ErrorCode;
+import com.alibaba.nacos.persistence.constants.PersistenceConstant;
 import com.alibaba.nacos.sys.env.EnvUtil;
 import com.alibaba.nacos.sys.file.FileChangeEvent;
 import com.alibaba.nacos.sys.file.FileWatcher;
@@ -65,8 +66,6 @@ public class NacosCoreStartUp extends AbstractNacosStartUp {
     
     private static final String DEFAULT_FUNCTION_MODE = "All";
     
-    private static final String DATASOURCE_PLATFORM_PROPERTY = "spring.sql.init.platform";
-    
     private static final String DERBY_DATABASE = "derby";
     
     private static final String DEFAULT_DATASOURCE_PLATFORM = "";
@@ -107,7 +106,7 @@ public class NacosCoreStartUp extends AbstractNacosStartUp {
         try {
             SOURCES.putAll(EnvUtil.loadProperties(EnvUtil.getApplicationConfFileResource()));
             environment.getPropertySources()
-                    .addLast(new OriginTrackedMapPropertySource(NACOS_APPLICATION_CONF, SOURCES));
+                .addLast(new OriginTrackedMapPropertySource(NACOS_APPLICATION_CONF, SOURCES));
             registerWatcher();
         } catch (Exception e) {
             throw new NacosRuntimeException(NacosException.SERVER_ERROR, e);
@@ -127,6 +126,10 @@ public class NacosCoreStartUp extends AbstractNacosStartUp {
             System.setProperty(MODE_PROPERTY_KEY_FUNCTION_MODE, EnvUtil.FUNCTION_MODE_CONFIG);
         } else if (EnvUtil.FUNCTION_MODE_NAMING.equals(EnvUtil.getFunctionMode())) {
             System.setProperty(MODE_PROPERTY_KEY_FUNCTION_MODE, EnvUtil.FUNCTION_MODE_NAMING);
+        } else if (EnvUtil.FUNCTION_MODE_MICROSERVICE.equals(EnvUtil.getFunctionMode())) {
+            System.setProperty(MODE_PROPERTY_KEY_FUNCTION_MODE, EnvUtil.FUNCTION_MODE_MICROSERVICE);
+        } else if (EnvUtil.FUNCTION_MODE_AI.equals(EnvUtil.getFunctionMode())) {
+            System.setProperty(MODE_PROPERTY_KEY_FUNCTION_MODE, EnvUtil.FUNCTION_MODE_AI);
         }
         
         System.setProperty(LOCAL_IP_PROPERTY_KEY, InetUtils.getSelfIP());
@@ -160,8 +163,8 @@ public class NacosCoreStartUp extends AbstractNacosStartUp {
         long startupCost = endTimestamp - getStartTimestamp();
         boolean useExternalStorage = judgeStorageMode(EnvUtil.getEnvironment());
         logger.info("Nacos started successfully in {} mode with {} storage in {} ms",
-                System.getProperty(MODE_PROPERTY_KEY_STAND_MODE),
-                useExternalStorage ? DATASOURCE_MODE_EXTERNAL : DATASOURCE_MODE_EMBEDDED, startupCost);
+            System.getProperty(MODE_PROPERTY_KEY_STAND_MODE),
+            useExternalStorage ? DATASOURCE_MODE_EXTERNAL : DATASOURCE_MODE_EMBEDDED, startupCost);
     }
     
     @Override
@@ -174,10 +177,12 @@ public class NacosCoreStartUp extends AbstractNacosStartUp {
     
     private void registerWatcher() throws NacosException {
         WatchFileCenter.registerWatcher(EnvUtil.getConfPath(), new FileWatcher() {
+            
             @Override
             public void onChange(FileChangeEvent event) {
                 try {
-                    Map<String, ?> tmp = EnvUtil.loadProperties(EnvUtil.getApplicationConfFileResource());
+                    Map<String, ?> tmp =
+                        EnvUtil.loadProperties(EnvUtil.getApplicationConfFileResource());
                     SOURCES.putAll(tmp);
                     NotifyCenter.publishEvent(ServerConfigChangeEvent.newEvent());
                 } catch (IOException ignore) {
@@ -207,7 +212,8 @@ public class NacosCoreStartUp extends AbstractNacosStartUp {
         // External data sources are used by default in cluster mode
         String platform = this.getDatasourcePlatform(env);
         boolean useExternalStorage =
-                !DEFAULT_DATASOURCE_PLATFORM.equalsIgnoreCase(platform) && !DERBY_DATABASE.equalsIgnoreCase(platform);
+            !DEFAULT_DATASOURCE_PLATFORM.equalsIgnoreCase(platform)
+                && !DERBY_DATABASE.equalsIgnoreCase(platform);
         
         // must initialize after setUseExternalDB
         // This value is true in stand-alone mode and false in cluster mode
@@ -215,7 +221,8 @@ public class NacosCoreStartUp extends AbstractNacosStartUp {
         // default value is depend on ${nacos.standalone}
         
         if (!useExternalStorage) {
-            boolean embeddedStorage = EnvUtil.getStandaloneMode() || Boolean.getBoolean("embeddedStorage");
+            boolean embeddedStorage =
+                EnvUtil.getStandaloneMode() || Boolean.getBoolean("embeddedStorage");
             // If the embedded data source storage is not turned on, it is automatically
             // upgraded to the external data source storage, as before
             if (!embeddedStorage) {
@@ -226,6 +233,11 @@ public class NacosCoreStartUp extends AbstractNacosStartUp {
     }
     
     private String getDatasourcePlatform(ConfigurableEnvironment env) {
-        return env.getProperty(DATASOURCE_PLATFORM_PROPERTY, DEFAULT_DATASOURCE_PLATFORM);
+        String result = env.getProperty(PersistenceConstant.DATASOURCE_DIALECT_TYPE_PROPERTY);
+        if (StringUtils.isNotBlank(result)) {
+            return result.trim();
+        }
+        result = env.getProperty(PersistenceConstant.DATASOURCE_PLATFORM_PROPERTY);
+        return StringUtils.isBlank(result) ? DEFAULT_DATASOURCE_PLATFORM : result.trim();
     }
 }

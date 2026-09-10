@@ -19,16 +19,14 @@ package com.alibaba.nacos.client.naming.utils;
 import com.alibaba.nacos.api.PropertyKeyConst;
 import com.alibaba.nacos.api.SystemPropertyKeyConst;
 import com.alibaba.nacos.api.common.Constants;
-import com.alibaba.nacos.api.selector.ExpressionSelector;
-import com.alibaba.nacos.api.selector.NoneSelector;
-import com.alibaba.nacos.api.selector.SelectorType;
+import com.alibaba.nacos.api.selector.SelectorFactory;
 import com.alibaba.nacos.client.env.NacosClientProperties;
 import com.alibaba.nacos.client.env.SourceType;
 import com.alibaba.nacos.client.utils.ContextPathUtil;
 import com.alibaba.nacos.client.utils.LogUtils;
 import com.alibaba.nacos.client.utils.TemplateUtils;
 import com.alibaba.nacos.client.utils.TenantUtil;
-import com.alibaba.nacos.common.utils.JacksonUtils;
+import com.alibaba.nacos.common.json.JsonAdapterLogUtils;
 import com.alibaba.nacos.common.utils.StringUtils;
 
 /**
@@ -49,26 +47,33 @@ public class InitUtils {
     public static String initNamespaceForNaming(NacosClientProperties properties) {
         String tmpNamespace = null;
         
-        String isUseCloudNamespaceParsing = properties.getProperty(PropertyKeyConst.IS_USE_CLOUD_NAMESPACE_PARSING,
-                properties.getProperty(SystemPropertyKeyConst.IS_USE_CLOUD_NAMESPACE_PARSING,
-                        String.valueOf(Constants.DEFAULT_USE_CLOUD_NAMESPACE_PARSING)));
+        String isUseCloudNamespaceParsing =
+            properties.getProperty(PropertyKeyConst.IS_USE_CLOUD_NAMESPACE_PARSING,
+                properties.getProperty(
+                    SystemPropertyKeyConst.IS_USE_CLOUD_NAMESPACE_PARSING,
+                    String.valueOf(Constants.DEFAULT_USE_CLOUD_NAMESPACE_PARSING)));
         
         if (Boolean.parseBoolean(isUseCloudNamespaceParsing)) {
             
             tmpNamespace = TenantUtil.getUserTenantForAns();
-            LogUtils.NAMING_LOGGER.info("initializer namespace from ans.namespace attribute : {}", tmpNamespace);
+            LogUtils.NAMING_LOGGER.info("initializer namespace from ans.namespace attribute : {}",
+                tmpNamespace);
             
             tmpNamespace = TemplateUtils.stringEmptyAndThenExecute(tmpNamespace, () -> {
-                String namespace = properties.getProperty(PropertyKeyConst.SystemEnv.ALIBABA_ALIWARE_NAMESPACE);
+                String namespace = properties
+                    .getProperty(PropertyKeyConst.SystemEnv.ALIBABA_ALIWARE_NAMESPACE);
                 LogUtils.NAMING_LOGGER.info(
-                        "initializer namespace from ALIBABA_ALIWARE_NAMESPACE attribute :" + namespace);
+                    "initializer namespace from ALIBABA_ALIWARE_NAMESPACE attribute :"
+                        + namespace);
                 return namespace;
             });
         }
         
         tmpNamespace = TemplateUtils.stringEmptyAndThenExecute(tmpNamespace, () -> {
-            String namespace = properties.getPropertyFrom(SourceType.JVM, PropertyKeyConst.NAMESPACE);
-            LogUtils.NAMING_LOGGER.info("initializer namespace from namespace attribute :" + namespace);
+            String namespace =
+                properties.getPropertyFrom(SourceType.JVM, PropertyKeyConst.NAMESPACE);
+            LogUtils.NAMING_LOGGER
+                .info("initializer namespace from namespace attribute :" + namespace);
             return namespace;
         });
         
@@ -76,7 +81,8 @@ public class InitUtils {
             tmpNamespace = properties.getProperty(PropertyKeyConst.NAMESPACE);
         }
         
-        tmpNamespace = TemplateUtils.stringEmptyAndThenExecute(tmpNamespace, () -> UtilAndComs.DEFAULT_NAMESPACE_ID);
+        tmpNamespace = TemplateUtils.stringEmptyAndThenExecute(tmpNamespace,
+            () -> UtilAndComs.DEFAULT_NAMESPACE_ID);
         return tmpNamespace;
     }
     
@@ -109,7 +115,7 @@ public class InitUtils {
      */
     public static void initSerialization() {
         // TODO register in implementation class or remove subType
-        JacksonUtils.registerSubtype(NoneSelector.class, SelectorType.none.name());
-        JacksonUtils.registerSubtype(ExpressionSelector.class, SelectorType.label.name());
+        SelectorFactory.preload();
+        JsonAdapterLogUtils.logSelectedAdapter();
     }
 }

@@ -87,8 +87,9 @@ public class EmbeddedUserPersistServiceImpl implements UserPersistService {
     @Override
     public void updateUserPassword(String username, String password) {
         try {
-            EmbeddedStorageContextHolder.addSqlContext("UPDATE users SET password = ? WHERE username=?", password,
-                    username);
+            EmbeddedStorageContextHolder.addSqlContext(
+                "UPDATE users SET password = ? WHERE username=?", password,
+                username);
             databaseOperate.blockUpdate();
         } finally {
             EmbeddedStorageContextHolder.cleanAllContext();
@@ -116,7 +117,8 @@ public class EmbeddedUserPersistServiceImpl implements UserPersistService {
             where.append(" AND username = ? ");
             params.add(username);
         }
-        Page<User> pageInfo = helper.fetchPage(sqlCountRows + where, sqlFetchRows + where, params.toArray(), pageNo,
+        Page<User> pageInfo =
+            helper.fetchPage(sqlCountRows + where, sqlFetchRows + where, params.toArray(), pageNo,
                 pageSize, USER_ROW_MAPPER);
         if (pageInfo == null) {
             pageInfo = new Page<>();
@@ -128,8 +130,10 @@ public class EmbeddedUserPersistServiceImpl implements UserPersistService {
     
     @Override
     public List<String> findUserLikeUsername(String username) {
-        String sql = "SELECT username FROM users WHERE username LIKE ? " + SQL_DERBY_ESCAPE_BACK_SLASH_FOR_LIKE;
-        return databaseOperate.queryMany(sql, new String[] {"%" + username + "%"}, String.class);
+        String sql = "SELECT username FROM users WHERE username LIKE ? "
+            + SQL_DERBY_ESCAPE_BACK_SLASH_FOR_LIKE;
+        return databaseOperate.queryMany(sql,
+            new String[] {"%" + generateLikeArgument(username) + "%"}, String.class);
     }
     
     @Override
@@ -146,8 +150,9 @@ public class EmbeddedUserPersistServiceImpl implements UserPersistService {
         }
         
         AuthPaginationHelper<User> helper = createPaginationHelper();
-        return helper.fetchPage(sqlCountRows + where, sqlFetchRows + where, params.toArray(), pageNo, pageSize,
-                USER_ROW_MAPPER);
+        return helper.fetchPage(sqlCountRows + where, sqlFetchRows + where, params.toArray(),
+            pageNo, pageSize,
+            USER_ROW_MAPPER);
     }
     
     @Override

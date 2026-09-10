@@ -20,11 +20,12 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class PersistenceConstantTest {
-
+    
     @Test
     void testConstants() {
         assertEquals("UTF-8", PersistenceConstant.DEFAULT_ENCODE);
-        assertEquals("spring.datasource.platform", PersistenceConstant.DATASOURCE_PLATFORM_PROPERTY_OLD);
+        assertEquals("nacos.plugin.datasource-dialect.type",
+            PersistenceConstant.DATASOURCE_DIALECT_TYPE_PROPERTY);
         assertEquals("spring.sql.init.platform", PersistenceConstant.DATASOURCE_PLATFORM_PROPERTY);
         assertEquals("mysql", PersistenceConstant.MYSQL);
         assertEquals("derby", PersistenceConstant.DERBY);

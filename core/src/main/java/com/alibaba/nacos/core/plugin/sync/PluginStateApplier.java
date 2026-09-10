@@ -26,7 +26,15 @@ import java.util.Map;
  * @since 3.2.0
  */
 public interface PluginStateApplier {
-
+    
+    /**
+     * Validate a plugin state change without mutating the current state.
+     *
+     * @param pluginId plugin ID
+     * @param enabled whether enabled
+     */
+    void validateStateChange(String pluginId, boolean enabled);
+    
     /**
      * Apply plugin state change.
      *
@@ -34,9 +42,9 @@ public interface PluginStateApplier {
      * @param enabled whether enabled
      */
     void applyStateChange(String pluginId, boolean enabled);
-
+    
     /**
-     * Apply plugin config change.
+     * Apply plugin config change and persist the accepted runtime source snapshot.
      *
      * @param pluginId plugin ID
      * @param config configuration map

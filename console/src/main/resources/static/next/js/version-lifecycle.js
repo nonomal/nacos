@@ -1,0 +1,1 @@
+function e(e,t,n){return!n||t?.status!==`REJECTED`?!1:e===`draft`?!t.historical:e===`reviewing`||e===`reviewed`}function t(e,t){return e===`reviewed`?!0:e!==`reviewing`||t?.historical?!1:t?.status===`APPROVED`||t?.status===`REJECTED`}export{t as n,e as t};

@@ -24,6 +24,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.core.env.StandardEnvironment;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ConfigInfoTest {
     
@@ -89,6 +90,33 @@ class ConfigInfoTest {
         assertEquals("DEFAULT_GROUP", configAllInfo.getGroup());
         assertEquals("继承的描述字段", configAllInfo.getDesc());
         assertEquals("inherited,tags", configAllInfo.getConfigTags());
+    }
+    
+    @Test
+    void testConstructorWithAppName() {
+        ConfigInfo configInfo = new ConfigInfo("dataId", "group", "appName", "content");
+        
+        assertEquals("dataId", configInfo.getDataId());
+        assertEquals("group", configInfo.getGroup());
+        assertEquals("appName", configInfo.getAppName());
+        assertEquals("content", configInfo.getContent());
+    }
+    
+    @Test
+    void testToString() {
+        ConfigInfo configInfo = new ConfigInfo("dataId", "group", "tenant", "app", "content");
+        configInfo.setId(1L);
+        configInfo.setMd5("md5");
+        configInfo.setType("text");
+        configInfo.setDesc("desc");
+        configInfo.setConfigTags("tag");
+        
+        String result = configInfo.toString();
+        
+        assertTrue(result.contains("id=1"));
+        assertTrue(result.contains("dataId='dataId'"));
+        assertTrue(result.contains("tenant='tenant'"));
+        assertTrue(result.contains("configTags='tag'"));
     }
     
 }

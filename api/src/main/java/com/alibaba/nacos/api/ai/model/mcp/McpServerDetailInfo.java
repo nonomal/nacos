@@ -21,9 +21,14 @@ import com.alibaba.nacos.api.ai.model.mcp.registry.ServerVersionDetail;
 import java.util.List;
 
 /**
- * AI Mcp server spec in nacos.
+ * Legacy MCP serving projection in Nacos.
+ *
+ * <p>This compatibility model combines the selected serving Version with resolved Endpoints and
+ * the published-Version list. Canonical management reads of one exact Version use
+ * {@link McpServerVersionDetail}.</p>
  *
  * @author xiweng.yy
+ * @see McpServerVersionDetail
  */
 public class McpServerDetailInfo extends McpServerBasicInfo {
     
@@ -32,6 +37,8 @@ public class McpServerDetailInfo extends McpServerBasicInfo {
     private List<McpEndpointInfo> frontendEndpoints;
     
     private McpToolSpecification toolSpec;
+    
+    private McpResourceSpecification resourceSpec;
     
     private List<ServerVersionDetail> allVersions;
     
@@ -58,11 +65,19 @@ public class McpServerDetailInfo extends McpServerBasicInfo {
     public void setToolSpec(McpToolSpecification toolSpec) {
         this.toolSpec = toolSpec;
     }
-
+    
+    public McpResourceSpecification getResourceSpec() {
+        return resourceSpec;
+    }
+    
+    public void setResourceSpec(McpResourceSpecification resourceSpec) {
+        this.resourceSpec = resourceSpec;
+    }
+    
     public List<ServerVersionDetail> getAllVersions() {
         return allVersions;
     }
-
+    
     public void setAllVersions(List<ServerVersionDetail> allVersions) {
         this.allVersions = allVersions;
     }

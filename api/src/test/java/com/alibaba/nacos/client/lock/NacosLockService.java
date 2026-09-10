@@ -59,7 +59,12 @@ public class NacosLockService implements LockService {
     }
     
     @Override
-    public void shutdown() throws NacosException {
+    public Boolean renew(LockInstance instance) throws NacosException {
+        return null;
+    }
     
+    @Override
+    public void shutdown() throws NacosException {
+        
     }
 }

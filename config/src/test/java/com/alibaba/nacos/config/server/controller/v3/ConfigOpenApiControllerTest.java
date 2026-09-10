@@ -17,6 +17,7 @@
 package com.alibaba.nacos.config.server.controller.v3;
 
 import com.alibaba.nacos.api.config.remote.response.ConfigQueryResponse;
+import com.alibaba.nacos.api.exception.NacosException;
 import com.alibaba.nacos.api.exception.api.NacosApiException;
 import com.alibaba.nacos.api.model.v2.ErrorCode;
 import com.alibaba.nacos.api.model.v2.Result;
@@ -42,6 +43,7 @@ import java.io.UnsupportedEncodingException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
@@ -70,7 +72,8 @@ class ConfigOpenApiControllerTest {
         response.setEncryptedDataKey(null);
         response.setLastModified(System.currentTimeMillis());
         response.setStatus(ConfigQueryChainResponse.ConfigQueryStatus.CONFIG_FOUND_FORMAL);
-        when(configQueryChainService.handle(any(ConfigQueryChainRequest.class))).thenReturn(response);
+        when(configQueryChainService.handle(any(ConfigQueryChainRequest.class)))
+            .thenReturn(response);
         ConfigFormV3 configForm = new ConfigFormV3();
         configForm.setDataId("test");
         configForm.setGroupName("test");
@@ -90,13 +93,65 @@ class ConfigOpenApiControllerTest {
         response.setContent(null);
         response.setEncryptedDataKey(null);
         response.setStatus(ConfigQueryChainResponse.ConfigQueryStatus.CONFIG_NOT_FOUND);
-        when(configQueryChainService.handle(any(ConfigQueryChainRequest.class))).thenReturn(response);
+        when(configQueryChainService.handle(any(ConfigQueryChainRequest.class)))
+            .thenReturn(response);
         ConfigFormV3 configForm = new ConfigFormV3();
         configForm.setDataId("test");
         configForm.setGroupName("test");
         Result<ConfigQueryResponse> actual = configOpenApiController.getConfig(configForm);
         assertEquals(ErrorCode.RESOURCE_NOT_FOUND.getCode(), actual.getCode());
         assertEquals(ErrorCode.RESOURCE_NOT_FOUND.getMsg(), actual.getMessage());
+    }
+    
+    @Test
+    void testGetConfigRejectsUnsafeDiskPathAsBadRequest() {
+        ConfigQueryChainResponse response = ConfigQueryChainResponse.buildFailResponse(
+            NacosException.INVALID_PARAM,
+            "Rejected unsafe Config disk path parameter: group='..'");
+        when(configQueryChainService.handle(any(ConfigQueryChainRequest.class)))
+            .thenReturn(response);
+        ConfigFormV3 configForm = new ConfigFormV3();
+        configForm.setDataId("test");
+        configForm.setGroupName("test");
+        
+        NacosApiException exception = assertThrows(NacosApiException.class,
+            () -> configOpenApiController.getConfig(configForm));
+        
+        assertEquals(NacosException.INVALID_PARAM, exception.getErrCode());
+        assertEquals(ErrorCode.PARAMETER_VALIDATE_ERROR.getCode(), exception.getDetailErrCode());
+        assertTrue(exception.getErrMsg().contains("group='..'"));
+    }
+    
+    @Test
+    void testGetConfigRejectsDirectoryControlSegmentBeforeQuery() {
+        ConfigFormV3 configForm = new ConfigFormV3();
+        configForm.setDataId("test");
+        configForm.setGroupName("..");
+        
+        NacosApiException exception = assertThrows(NacosApiException.class,
+            () -> configOpenApiController.getConfig(configForm));
+        
+        assertEquals(NacosException.INVALID_PARAM, exception.getErrCode());
+        assertEquals(ErrorCode.PARAMETER_VALIDATE_ERROR.getCode(), exception.getDetailErrCode());
+        assertTrue(exception.getErrMsg().contains("invalid group"));
+    }
+    
+    @Test
+    void testGetConfigNonExistGrayWithoutMatchedGray()
+        throws NacosApiException, UnsupportedEncodingException {
+        ConfigQueryChainResponse response = new ConfigQueryChainResponse();
+        response.setContent(null);
+        response.setEncryptedDataKey(null);
+        response.setStatus(ConfigQueryChainResponse.ConfigQueryStatus.CONFIG_FOUND_GRAY);
+        when(configQueryChainService.handle(any(ConfigQueryChainRequest.class)))
+            .thenReturn(response);
+        ConfigFormV3 configForm = new ConfigFormV3();
+        configForm.setDataId("test");
+        configForm.setGroupName("test");
+        
+        Result<ConfigQueryResponse> actual = configOpenApiController.getConfig(configForm);
+        
+        assertEquals(ErrorCode.RESOURCE_NOT_FOUND.getCode(), actual.getCode());
     }
     
     @Test
@@ -110,9 +165,11 @@ class ConfigOpenApiControllerTest {
         response.setStatus(ConfigQueryChainResponse.ConfigQueryStatus.CONFIG_FOUND_GRAY);
         response.setMatchedGray(new ConfigCacheGray());
         BetaGrayRule betaGrayRule = new BetaGrayRule("1.1.1.1", 1);
-        ConfigGrayPersistInfo grayPersistInfo = GrayRuleManager.constructConfigGrayPersistInfo(betaGrayRule);
+        ConfigGrayPersistInfo grayPersistInfo =
+            GrayRuleManager.constructConfigGrayPersistInfo(betaGrayRule);
         response.getMatchedGray().resetGrayRule(JacksonUtils.toJson(grayPersistInfo));
-        when(configQueryChainService.handle(any(ConfigQueryChainRequest.class))).thenReturn(response);
+        when(configQueryChainService.handle(any(ConfigQueryChainRequest.class)))
+            .thenReturn(response);
         ConfigFormV3 configForm = new ConfigFormV3();
         configForm.setDataId("test");
         configForm.setGroupName("test");
@@ -137,9 +194,11 @@ class ConfigOpenApiControllerTest {
         response.setStatus(ConfigQueryChainResponse.ConfigQueryStatus.CONFIG_FOUND_GRAY);
         response.setMatchedGray(new ConfigCacheGray());
         TagGrayRule tagGrayRule = new TagGrayRule("1.1.1.1", 1);
-        ConfigGrayPersistInfo grayPersistInfo = GrayRuleManager.constructConfigGrayPersistInfo(tagGrayRule);
+        ConfigGrayPersistInfo grayPersistInfo =
+            GrayRuleManager.constructConfigGrayPersistInfo(tagGrayRule);
         response.getMatchedGray().resetGrayRule(JacksonUtils.toJson(grayPersistInfo));
-        when(configQueryChainService.handle(any(ConfigQueryChainRequest.class))).thenReturn(response);
+        when(configQueryChainService.handle(any(ConfigQueryChainRequest.class)))
+            .thenReturn(response);
         ConfigFormV3 configForm = new ConfigFormV3();
         configForm.setDataId("test");
         configForm.setGroupName("test");

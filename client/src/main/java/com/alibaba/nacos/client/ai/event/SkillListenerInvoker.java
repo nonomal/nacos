@@ -1,5 +1,5 @@
 /*
- * Copyright 1999-2025 Alibaba Group Holding Ltd.
+ * Copyright 1999-2026 Alibaba Group Holding Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,7 +27,7 @@ import org.slf4j.LoggerFactory;
  * @author nacos
  */
 public class SkillListenerInvoker
-        extends AbstractAiListenerInvoker<NacosSkillEvent, AbstractNacosSkillListener> {
+    extends AbstractAiListenerInvoker<NacosSkillEvent, AbstractNacosSkillListener> {
     
     private static final Logger LOGGER = LoggerFactory.getLogger(SkillListenerInvoker.class);
     
@@ -37,6 +37,7 @@ public class SkillListenerInvoker
     
     @Override
     protected void logInvoke(NacosSkillEvent event) {
-        LOGGER.info("Invoke event skillName: {} to Listener: {}", event.getSkillName(), listener.toString());
+        LOGGER.info("Invoke event skillName: {} to Listener: {}", event.getSkillName(),
+            listener.toString());
     }
 }

@@ -16,9 +16,13 @@
 
 package com.alibaba.nacos.ai.remote.handler.a2a;
 
-import com.alibaba.nacos.ai.constant.Constants;
-import com.alibaba.nacos.ai.service.a2a.identity.AgentIdCodecHolder;
-import com.alibaba.nacos.ai.utils.AgentEndpointUtil;
+import com.alibaba.nacos.api.annotation.Since;
+import com.alibaba.nacos.ai.service.a2a.A2aCompatibilityMode;
+import com.alibaba.nacos.ai.service.a2a.A2aCompatibilityModeResolver;
+import com.alibaba.nacos.ai.service.a2a.CanonicalA2aEndpointOperationService;
+import com.alibaba.nacos.ai.service.a2a.LegacyA2aEndpointOperationService;
+import com.alibaba.nacos.ai.service.a2a.migration.A2aMigrationEndpointRouter;
+import com.alibaba.nacos.ai.service.a2a.migration.A2aMigrationState;
 import com.alibaba.nacos.ai.utils.AgentRequestUtil;
 import com.alibaba.nacos.api.ai.model.a2a.AgentEndpoint;
 import com.alibaba.nacos.api.ai.remote.AiRemoteConstants;
@@ -27,18 +31,13 @@ import com.alibaba.nacos.api.ai.remote.response.AgentEndpointResponse;
 import com.alibaba.nacos.api.exception.NacosException;
 import com.alibaba.nacos.api.exception.api.NacosApiException;
 import com.alibaba.nacos.api.model.v2.ErrorCode;
-import com.alibaba.nacos.api.naming.pojo.Instance;
 import com.alibaba.nacos.api.remote.request.RequestMeta;
 import com.alibaba.nacos.auth.annotation.Secured;
-import com.alibaba.nacos.common.notify.NotifyCenter;
-import com.alibaba.nacos.common.trace.event.naming.BatchRegisterInstanceTraceEvent;
 import com.alibaba.nacos.common.utils.StringUtils;
 import com.alibaba.nacos.core.namespace.filter.NamespaceValidation;
 import com.alibaba.nacos.core.paramcheck.ExtractorManager;
 import com.alibaba.nacos.core.paramcheck.impl.AgentRequestParamExtractor;
 import com.alibaba.nacos.core.remote.RequestHandler;
-import com.alibaba.nacos.naming.core.v2.pojo.Service;
-import com.alibaba.nacos.naming.core.v2.service.impl.EphemeralClientOperationServiceImpl;
 import com.alibaba.nacos.naming.utils.NamingRequestUtil;
 import com.alibaba.nacos.plugin.auth.constant.ActionTypes;
 import com.alibaba.nacos.plugin.auth.constant.SignType;
@@ -48,7 +47,6 @@ import org.springframework.stereotype.Component;
 
 import java.util.Collection;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
 
 /**
@@ -56,42 +54,66 @@ import java.util.Set;
  *
  * @author xiweng.yy
  */
+@Since("3.1.1")
 @Component
-public class BatchAgentEndpointRequestHandler extends RequestHandler<BatchAgentEndpointRequest, AgentEndpointResponse> {
+public class BatchAgentEndpointRequestHandler
+    extends RequestHandler<BatchAgentEndpointRequest, AgentEndpointResponse> {
     
-    private static final Logger LOGGER = LoggerFactory.getLogger(BatchAgentEndpointRequestHandler.class);
+    private static final Logger LOGGER =
+        LoggerFactory.getLogger(BatchAgentEndpointRequestHandler.class);
     
-    private final EphemeralClientOperationServiceImpl clientOperationService;
+    private final LegacyA2aEndpointOperationService legacyEndpointOperationService;
     
-    private final AgentIdCodecHolder agentIdCodecHolder;
+    private final A2aCompatibilityModeResolver compatibilityModeResolver;
     
-    public BatchAgentEndpointRequestHandler(EphemeralClientOperationServiceImpl clientOperationService,
-            AgentIdCodecHolder agentIdCodecHolder) {
-        this.clientOperationService = clientOperationService;
-        this.agentIdCodecHolder = agentIdCodecHolder;
+    private final CanonicalA2aEndpointOperationService canonicalEndpointOperationService;
+    
+    private final A2aMigrationEndpointRouter migrationEndpointRouter;
+    
+    public BatchAgentEndpointRequestHandler(
+        LegacyA2aEndpointOperationService legacyEndpointOperationService,
+        A2aCompatibilityModeResolver compatibilityModeResolver,
+        CanonicalA2aEndpointOperationService canonicalEndpointOperationService,
+        A2aMigrationEndpointRouter migrationEndpointRouter) {
+        this.legacyEndpointOperationService = legacyEndpointOperationService;
+        this.compatibilityModeResolver = compatibilityModeResolver;
+        this.canonicalEndpointOperationService = canonicalEndpointOperationService;
+        this.migrationEndpointRouter = migrationEndpointRouter;
     }
     
     @Override
     @NamespaceValidation
     @ExtractorManager.Extractor(rpcExtractor = AgentRequestParamExtractor.class)
     @Secured(action = ActionTypes.WRITE, signType = SignType.AI)
-    public AgentEndpointResponse handle(BatchAgentEndpointRequest request, RequestMeta meta) throws NacosException {
+    public AgentEndpointResponse handle(BatchAgentEndpointRequest request, RequestMeta meta)
+        throws NacosException {
         AgentEndpointResponse response = new AgentEndpointResponse();
         response.setType(AiRemoteConstants.BATCH_REGISTER_ENDPOINT);
         AgentRequestUtil.fillNamespaceId(request);
         try {
             validateRequest(request);
-            List<Instance> instances = AgentEndpointUtil.transferToInstances(request.getEndpoints());
-            String version = request.getEndpoints().stream().findFirst().get().getVersion();
-            String serviceName = agentIdCodecHolder.encode(request.getAgentName()) + "::" + version;
-            Service service = Service.newService(request.getNamespaceId(), Constants.A2A.AGENT_ENDPOINT_GROUP,
-                    serviceName);
-            clientOperationService.batchRegisterInstance(service, instances, meta.getConnectionId());
-            publishBatchRegisterInstanceTraceEvent(service, instances, meta);
+            // TODO(remove in 4.0): Temporary migration path for Nacos 3.0-3.2 A2A data.
+            // Runtime dual materialization is isolated before the long-lived static branches.
+            A2aMigrationState migrationState = migrationEndpointRouter.resolveState();
+            if (migrationState != null) {
+                migrationEndpointRouter.register(meta.getConnectionId(),
+                    request.getNamespaceId(), request.getAgentName(), request.getEndpoints(),
+                    NamingRequestUtil.getSourceIpForGrpcRequest(meta), migrationState);
+                return response;
+            }
+            if (A2aCompatibilityMode.CANONICAL == compatibilityModeResolver.resolve()) {
+                canonicalEndpointOperationService.register(meta.getConnectionId(),
+                    request.getNamespaceId(), request.getAgentName(), request.getEndpoints());
+                return response;
+            }
+            legacyEndpointOperationService.register(meta.getConnectionId(),
+                request.getNamespaceId(), request.getAgentName(), request.getEndpoints(),
+                NamingRequestUtil.getSourceIpForGrpcRequest(meta));
         } catch (NacosApiException e) {
             response.setErrorInfo(e.getErrCode(), e.getErrMsg());
-            LOGGER.error("[{}] Batch Register agent endpoints to agent {} error: {}", meta.getConnectionId(),
-                    request.getAgentName(), e.getErrMsg());
+            LOGGER.error("[{}] Batch Register agent endpoints to agent {} error: {}",
+                meta.getConnectionId(),
+                request.getAgentName(), e.getErrMsg());
         }
         return response;
     }
@@ -99,33 +121,29 @@ public class BatchAgentEndpointRequestHandler extends RequestHandler<BatchAgentE
     private void validateRequest(BatchAgentEndpointRequest request) throws NacosApiException {
         if (StringUtils.isBlank(request.getAgentName())) {
             throw new NacosApiException(NacosException.INVALID_PARAM, ErrorCode.PARAMETER_MISSING,
-                    "Required parameter `agentName` can't be empty or null");
+                "Required parameter `agentName` can't be empty or null");
         }
         if (null == request.getEndpoints() || request.getEndpoints().isEmpty()) {
             throw new NacosApiException(NacosException.INVALID_PARAM, ErrorCode.PARAMETER_MISSING,
-                    "Required parameter `endpoints` can't be empty or null, if want to deregister, please use deregister API.");
+                "Required parameter `endpoints` can't be empty or null, if want to deregister, please use deregister API.");
         }
         Collection<AgentEndpoint> endpoints = request.getEndpoints();
         Set<String> versions = new HashSet<>();
         for (AgentEndpoint each : endpoints) {
-            if (StringUtils.isBlank(each.getVersion())) {
-                throw new NacosApiException(NacosException.INVALID_PARAM, ErrorCode.PARAMETER_MISSING,
-                        "Required parameter `endpoint.version` can't be empty or null.");
+            if (each == null || StringUtils.isBlank(each.getVersion())) {
+                throw new NacosApiException(NacosException.INVALID_PARAM,
+                    ErrorCode.PARAMETER_MISSING,
+                    "Required parameter `endpoint.version` can't be empty or null.");
             }
             versions.add(each.getVersion());
         }
         if (versions.size() > 1) {
-            throw new NacosApiException(NacosException.INVALID_PARAM, ErrorCode.PARAMETER_VALIDATE_ERROR,
-                    String.format("Required parameter `endpoint.version` can't be different, current includes: %s.",
-                            String.join(",", versions)));
+            throw new NacosApiException(NacosException.INVALID_PARAM,
+                ErrorCode.PARAMETER_VALIDATE_ERROR,
+                String.format(
+                    "Required parameter `endpoint.version` can't be different, current includes: %s.",
+                    String.join(",", versions)));
         }
     }
     
-    private void publishBatchRegisterInstanceTraceEvent(Service service, List<Instance> instances, RequestMeta meta) {
-        long eventTime = System.currentTimeMillis();
-        String clientIp = NamingRequestUtil.getSourceIpForGrpcRequest(meta);
-        instances.forEach(instance -> NotifyCenter.publishEvent(
-                new BatchRegisterInstanceTraceEvent(eventTime, clientIp, true, service.getNamespace(),
-                        service.getGroup(), service.getName(), instance.getIp(), instance.getPort())));
-    }
 }

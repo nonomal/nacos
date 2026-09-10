@@ -32,11 +32,12 @@ import java.util.function.Consumer;
  * @author <a href="mailto:liaochuntao@live.com">liaochuntao</a>
  */
 @SuppressWarnings("all")
-public class ApplicationUtils implements ApplicationContextInitializer<ConfigurableApplicationContext> {
+public class ApplicationUtils
+    implements ApplicationContextInitializer<ConfigurableApplicationContext> {
     
     private static ApplicationContext applicationContext;
     
-    private static boolean started = false;
+    private static volatile boolean started = false;
     
     public static boolean isStarted() {
         return started;
@@ -62,7 +63,8 @@ public class ApplicationUtils implements ApplicationContextInitializer<Configura
         return applicationContext.getBean(requiredType);
     }
     
-    public static <T> void getBeanIfExist(Class<T> requiredType, Consumer<T> consumer) throws BeansException {
+    public static <T> void getBeanIfExist(Class<T> requiredType, Consumer<T> consumer)
+        throws BeansException {
         try {
             T bean = applicationContext.getBean(requiredType);
             consumer.accept(bean);

@@ -23,11 +23,33 @@ package com.alibaba.nacos.ai.constant;
  */
 public class Constants {
     
+    public static final String AI_RESOURCE_SEARCH_CLIENT_PATH =
+        "/v3/client/ai/resources/search";
+    
     public static final String MCP_PATH = "/ai/mcp";
     
     public static final String MCP_ADMIN_PATH = "/v3/admin" + MCP_PATH;
     
     public static final String MCP_CONSOLE_PATH = "/v3/console" + MCP_PATH;
+    
+    public static final String MCP_CLIENT_PATH = "/v3/client" + MCP_PATH;
+    
+    public static final String AI_RESOURCE_IMPORT_ADMIN_PATH = "/v3/admin/ai/import";
+    
+    public static final String AI_RESOURCE_IMPORT_CONSOLE_PATH = "/v3/console/ai/import";
+    
+    public static final String ARD_ENABLED_KEY = "nacos.ai.ard.enabled";
+    
+    /**
+     * Enables the protocol-neutral AI Resource Search runtime.
+     */
+    public static final String AI_RESOURCE_SEARCH_ENABLED_KEY =
+        "nacos.ai.resource.search.enabled";
+    
+    /**
+     * Selects the default AI Resource storage provider for new writes.
+     */
+    public static final String AI_STORAGE_PROVIDER_CONFIG_KEY = "nacos.ai.storage.provider";
     
     public static final String MCP_LIST_SEARCH_ACCURATE = "accurate";
     
@@ -41,18 +63,36 @@ public class Constants {
     
     public static final String MCP_SERVER_TOOL_GROUP = "mcp-tools";
     
+    public static final String MCP_SERVER_RESOURCE_GROUP = "mcp-resources";
+    
+    /**
+     * Dedicated Config namespace for internal AI control state.
+     *
+     * <p>The namespace is intentionally not registered in the user Namespace catalog. Operators
+     * should avoid creating a Namespace or managing Config content with this identifier.</p>
+     */
+    public static final String AI_INTERNAL_STATE_NAMESPACE = "_nacos_internal_";
+    
+    /**
+     * Dedicated Config namespace for MCP lifecycle reconciliation state.
+     */
+    public static final String MCP_LIFECYCLE_STATE_NAMESPACE = AI_INTERNAL_STATE_NAMESPACE;
+    
     public static final String MCP_SERVER_SPEC_DATA_ID_SUFFIX = "-mcp-server.json";
     
     public static final String MCP_SERVER_VERSION_DATA_ID_SUFFIX = "-mcp-versions.json";
     
     public static final String MCP_SERVER_TOOL_DATA_ID_SUFFIX = "-mcp-tools.json";
     
+    public static final String MCP_SERVER_RESOURCE_DATA_ID_SUFFIX = "-mcp-resources.json";
+    
     public static final String MCP_SERVER_ENDPOINT_GROUP = "mcp-endpoints";
     
-    public static final String MCP_SERVER_ENDPOINT_CLUSTER = com.alibaba.nacos.api.common.Constants.DEFAULT_CLUSTER_NAME;
+    public static final String MCP_SERVER_ENDPOINT_CLUSTER =
+        com.alibaba.nacos.api.common.Constants.DEFAULT_CLUSTER_NAME;
     
     public static final String MCP_BACKEND_INSTANCE_PROTOCOL_KEY = "transportProtocol";
-
+    
     public static final String MCP_SERVER_ENDPOINT_ADDRESS = "address";
     
     public static final String MCP_SERVER_ENDPOINT_PORT = "port";
@@ -77,11 +117,17 @@ public class Constants {
     
     public static final String META_PATH = "path";
     
-    public static final String SERVER_VERSION_CONFIG_DATA_ID_TEMPLATE = "%s" + MCP_SERVER_VERSION_DATA_ID_SUFFIX;
+    public static final String SERVER_VERSION_CONFIG_DATA_ID_TEMPLATE =
+        "%s" + MCP_SERVER_VERSION_DATA_ID_SUFFIX;
     
-    public static final String SERVER_SPECIFICATION_CONFIG_DATA_ID_TEMPLATE = "%s-%s" + MCP_SERVER_SPEC_DATA_ID_SUFFIX;
+    public static final String SERVER_SPECIFICATION_CONFIG_DATA_ID_TEMPLATE =
+        "%s-%s" + MCP_SERVER_SPEC_DATA_ID_SUFFIX;
     
-    public static final String SERVER_TOOLS_SPEC_CONFIG_DATA_ID_TEMPLATE = "%s-%s" + MCP_SERVER_TOOL_DATA_ID_SUFFIX;
+    public static final String SERVER_TOOLS_SPEC_CONFIG_DATA_ID_TEMPLATE =
+        "%s-%s" + MCP_SERVER_TOOL_DATA_ID_SUFFIX;
+    
+    public static final String SERVER_RESOURCE_SPEC_CONFIG_DATA_ID_TEMPLATE =
+        "%s-%s" + MCP_SERVER_RESOURCE_DATA_ID_SUFFIX;
     
     public static class A2A {
         
@@ -97,17 +143,106 @@ public class Constants {
         
         public static final String SEARCH_ACCURATE = "accurate";
         
+    }
+    
+    public static class Agent {
+        
+        public static final String CLIENT_PATH = "/v3/client/ai/agents";
+        
+        public static final String CONSOLE_PATH = "/v3/console/ai/agents";
+        
+        public static final String ADMIN_PATH = "/v3/admin/ai/agents";
+        
+        /**
+         * Selects the RAD Agent Search read path.
+         */
+        public static final String RAD_SEARCH_MODE_CONFIG_KEY = "nacos.ai.rad.search.mode";
+        
+        /**
+         * Soft watermark for Runtime Endpoint publication entries owned by one publisher Client.
+         */
+        public static final String MAX_PUBLICATIONS_PER_CLIENT_CONFIG_KEY =
+            "nacos.ai.rad.capacity.publication.max-publications-per-client";
+        
+        public static final int DEFAULT_MAX_PUBLICATIONS_PER_CLIENT = 100;
+        
+        /**
+         * Soft watermark for gRPC Watches or HTTP Batch items owned by one client.
+         */
+        public static final String MAX_WATCHES_PER_CLIENT_CONFIG_KEY =
+            "nacos.ai.rad.capacity.watch.max-per-client";
+        
+        public static final int DEFAULT_MAX_WATCHES_PER_CLIENT = 300;
+        
+        /**
+         * Hard limit for request-scoped HTTP Watch waiters retained by one server node.
+         */
+        public static final String MAX_HTTP_WATCH_WAITERS_PER_NODE_CONFIG_KEY =
+            "nacos.ai.rad.capacity.watch.http.max-active-requests-per-node";
+        
+        public static final int DEFAULT_MAX_HTTP_WATCH_WAITERS_PER_NODE = 10000;
+        
+        /**
+         * Hard aggregate byte limit for active HTTP Watch JSON fields on one server node.
+         */
+        public static final String MAX_HTTP_WATCH_ACTIVE_BYTES_PER_NODE_CONFIG_KEY =
+            "nacos.ai.rad.capacity.watch.http.max-active-bytes-per-node";
+        
+        public static final long DEFAULT_MAX_HTTP_WATCH_ACTIVE_BYTES_PER_NODE =
+            64L * 1024L * 1024L;
+        
+        /**
+         * Hard byte limit for one HTTP Watch JSON-valued form field.
+         */
+        public static final String MAX_HTTP_WATCH_REQUEST_BYTES_CONFIG_KEY =
+            "nacos.ai.rad.capacity.watch.http.max-request-bytes";
+        
+        public static final long DEFAULT_MAX_HTTP_WATCH_REQUEST_BYTES = 1024L * 1024L;
+        
+        /**
+         * Resource type stored in {@code ai_resource} and {@code ai_resource_version}.
+         */
+        public static final String RESOURCE_TYPE_AGENT = "agent";
+        
+        /**
+         * Compatibility override for the Agent storage provider.
+         */
+        public static final String AGENT_STORAGE_PROVIDER_CONFIG_KEY =
+            "nacos.ai.agent.storage.provider";
+        
         public static final String AGENT_ENDPOINT_GROUP = "agent-endpoints";
         
-        public static final String AGENT_ENDPOINT_PATH_KEY = "__nacos.agent.endpoint.path__";
+        public static final String AGENT_ENDPOINT_METADATA_PREFIX = "__nacos.agent.endpoint.";
         
-        public static final String AGENT_ENDPOINT_TRANSPORT_KEY = "__nacos.agent.endpoint.transport__";
+        public static final String AGENT_ENDPOINT_PATH_KEY =
+            AGENT_ENDPOINT_METADATA_PREFIX + "path__";
         
-        public static final String NACOS_AGENT_ENDPOINT_SUPPORT_TLS = "__nacos.agent.endpoint.supportTls__";
+        public static final String AGENT_ENDPOINT_TRANSPORT_KEY =
+            AGENT_ENDPOINT_METADATA_PREFIX + "transport__";
         
-        public static final String NACOS_AGENT_ENDPOINT_PROTOCOL_KEY = "__nacos.agent.endpoint.protocol__";
+        public static final String AGENT_ENDPOINT_PROTOCOL_KEY =
+            AGENT_ENDPOINT_METADATA_PREFIX + "protocol__";
         
-        public static final String NACOS_AGENT_ENDPOINT_QUERY_KEY = "__nacos.agent.endpoint.query__";
+        public static final String AGENT_ENDPOINT_PROTOCOL_VERSION_KEY =
+            AGENT_ENDPOINT_METADATA_PREFIX + "protocolVersion__";
+        
+        public static final String AGENT_ENDPOINT_SUPPORT_TLS_KEY =
+            AGENT_ENDPOINT_METADATA_PREFIX + "supportTls__";
+        
+        public static final String AGENT_ENDPOINT_QUERY_KEY =
+            AGENT_ENDPOINT_METADATA_PREFIX + "query__";
+        
+        public static final String AGENT_ENDPOINT_TENANT_KEY =
+            AGENT_ENDPOINT_METADATA_PREFIX + "tenant__";
+        
+        public static final String AGENT_ENDPOINT_VERSION_KEY =
+            AGENT_ENDPOINT_METADATA_PREFIX + "version__";
+        
+        public static final String AGENT_ENDPOINT_VERSION_RANGE_KEY =
+            AGENT_ENDPOINT_METADATA_PREFIX + "versionRange__";
+        
+        public static final String AGENT_ENDPOINT_PRIORITY_KEY =
+            AGENT_ENDPOINT_METADATA_PREFIX + "priority__";
     }
     
     public static class Skills {
@@ -115,6 +250,8 @@ public class Constants {
         public static final String CONSOLE_PATH = "/v3/console/ai/skills";
         
         public static final String ADMIN_PATH = "/v3/admin/ai/skills";
+        
+        public static final String CLIENT_PATH = "/v3/client/ai/skills";
         
         public static final String SKILL_GROUP = "skill";
         
@@ -125,11 +262,97 @@ public class Constants {
         public static final String SEARCH_ACCURATE = "accurate";
         
         public static final String SKILL_DEFAULT_NAMESPACE = "public";
-
+        
+        public static final String SKILL_STORAGE_PROVIDER_CONFIG_KEY =
+            "nacos.ai.skill.storage.provider";
+        
         /**
-         * Max allowed size for skill zip upload (10MB). Exceeding this will result in a clear error.
+         * Resource type constant used in {@code ai_resource_version.type} for skill rows.
+         */
+        public static final String RESOURCE_TYPE_SKILL = "skill";
+        
+        /**
+         * Key inside {@code ai_resource_version.storage} JSON for the published content MD5.
+         */
+        public static final String STORAGE_KEY_CONTENT_MD5 = "contentMd5";
+        
+        /**
+         * Response header carrying the published skill content MD5 for client listener cache.
+         */
+        public static final String HEADER_SKILL_MD5 = "X-Nacos-Skill-Md5";
+        
+        /**
+         * Response header carrying the resolved version when the client queries by label.
+         */
+        public static final String HEADER_SKILL_RESOLVED_VERSION = "X-Nacos-Skill-Resolved-Version";
+        
+        /**
+         * Default max allowed size for skill zip upload (10MB).
+         *
+         * <p>Runtime callers should use
+         * {@code com.alibaba.nacos.ai.utils.SkillZipParser#resolveMaxUploadBytes()} instead, which
+         * honors the {@code nacos.ai.skill.zip.max-upload-size-mb} property when an operator
+         * needs to raise this cap. This constant is preserved as the historical default and for
+         * backward compatibility with callers outside the skill upload path.
          */
         public static final long MAX_UPLOAD_ZIP_BYTES = 10L * 1024 * 1024;
+    }
+    
+    public static class AgentSpecs {
+        
+        public static final String ADMIN_PATH = "/v3/admin/ai/agentspecs";
+        
+        public static final String CLIENT_PATH = "/v3/client/ai/agentspecs";
+        
+        public static final String CONSOLE_PATH = "/v3/console/ai/agentspecs";
+        
+        public static final String AGENTSPEC_GROUP_PREFIX = "agentspec_";
+        
+        public static final String RESOURCE_TYPE_AGENTSPEC = "agentspec";
+        
+        public static final String AGENTSPEC_MAIN_DATA_ID = "manifest.json";
+        
+        /**
+         * Default max allowed size for agentspec zip upload (50MB).
+         *
+         * <p>Runtime callers should use
+         * {@code com.alibaba.nacos.ai.utils.AgentSpecZipParser#resolveMaxUploadBytes()} instead,
+         * which honors the {@code nacos.ai.agentspec.zip.max-upload-size-mb} property when an
+         * operator needs to raise this cap. This constant is preserved as the historical default
+         * and for backward compatibility with callers outside the AgentSpec upload path.
+         */
+        public static final long MAX_UPLOAD_ZIP_BYTES = 50L * 1024 * 1024;
+        
+        public static final String AGENTSPEC_STORAGE_PROVIDER_CONFIG_KEY =
+            "nacos.ai.agentspec.storage.provider";
+        
+        public static final String SEARCH_BLUR = "blur";
+        
+        public static final String SEARCH_ACCURATE = "accurate";
+        
+        public static final String AGENTSPEC_DEFAULT_NAMESPACE = "public";
+        
+        public static final String HEADER_AGENTSPEC_MD5 = "X-Nacos-AgentSpec-Md5";
+        
+        public static final String HEADER_AGENTSPEC_RESOLVED_VERSION =
+            "X-Nacos-AgentSpec-Resolved-Version";
+    }
+    
+    public static class Pipeline {
+        
+        public static final String ADMIN_PATH = "/v3/admin/ai/pipelines";
+        
+        public static final String CONSOLE_PATH = "/v3/console/ai/pipelines";
+        
+        /**
+         * List pipeline executions (aligned with Skill/Prompt {@code /list} style).
+         */
+        public static final String LIST_SUBPATH = "/list";
+        
+        /**
+         * Get single pipeline execution by id (query parameter {@code pipelineId}).
+         */
+        public static final String DETAIL_SUBPATH = "/detail";
     }
     
     public static class Prompt {
@@ -153,12 +376,14 @@ public class Constants {
         /**
          * DataId suffix for descriptor side prompt metadata.
          */
-        public static final String DESCRIPTOR_DATA_ID_SUFFIX = ".descriptor" + PROMPT_DATA_ID_SUFFIX;
+        public static final String DESCRIPTOR_DATA_ID_SUFFIX =
+            ".descriptor" + PROMPT_DATA_ID_SUFFIX;
         
         /**
          * DataId suffix for runtime label/version mapping.
          */
-        public static final String LABEL_VERSION_MAPPING_DATA_ID_SUFFIX = ".label-version-mapping" + PROMPT_DATA_ID_SUFFIX;
+        public static final String LABEL_VERSION_MAPPING_DATA_ID_SUFFIX =
+            ".label-version-mapping" + PROMPT_DATA_ID_SUFFIX;
         
         /**
          * Key for prompt version in extInfo.
@@ -184,6 +409,9 @@ public class Constants {
          * Default namespace for prompt.
          */
         public static final String PROMPT_DEFAULT_NAMESPACE = "public";
+        
+        public static final String PROMPT_STORAGE_PROVIDER_CONFIG_KEY =
+            "nacos.ai.prompt.storage.provider";
         
         /**
          * Config type for prompt.

@@ -18,8 +18,7 @@ package com.alibaba.nacos.config.server.model;
 
 import com.alibaba.nacos.common.utils.MD5Utils;
 import com.alibaba.nacos.config.server.constant.Constants;
-import com.fasterxml.jackson.databind.annotation.JsonSerialize;
-import com.fasterxml.jackson.databind.ser.std.ToStringSerializer;
+import com.fasterxml.jackson.annotation.JsonFormat;
 
 import java.io.PrintWriter;
 import java.io.Serializable;
@@ -35,7 +34,7 @@ public class ConfigInfoBase implements Serializable, Comparable<ConfigInfoBase> 
     
     static final long serialVersionUID = 265316491795790798L;
     
-    @JsonSerialize(using = ToStringSerializer.class)
+    @JsonFormat(shape = JsonFormat.Shape.STRING)
     private long id;
     
     private String dataId;
@@ -49,7 +48,7 @@ public class ConfigInfoBase implements Serializable, Comparable<ConfigInfoBase> 
     private String encryptedDataKey;
     
     public ConfigInfoBase() {
-    
+        
     }
     
     public ConfigInfoBase(String dataId, String group, String content) {
@@ -213,15 +212,16 @@ public class ConfigInfoBase implements Serializable, Comparable<ConfigInfoBase> 
         }
         return true;
     }
-
+    
     @Override
     public int hashCode() {
         return Objects.hash(dataId, group, content, md5);
     }
-
+    
     @Override
     public String toString() {
-        return "ConfigInfoBase{" + "id=" + id + ", dataId='" + dataId + '\'' + ", group='" + group + '\''
-                + ", content='" + content + '\'' + ", md5='" + md5 + '\'' + '}';
+        return "ConfigInfoBase{" + "id=" + id + ", dataId='" + dataId + '\'' + ", group='" + group
+            + '\''
+            + ", content='" + content + '\'' + ", md5='" + md5 + '\'' + '}';
     }
 }

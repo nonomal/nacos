@@ -1,5 +1,5 @@
 /*
- * Copyright 1999-2025 Alibaba Group Holding Ltd.
+ * Copyright 1999-2026 Alibaba Group Holding Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,7 +19,10 @@ package com.alibaba.nacos.api.ai.listener;
 /**
  * Nacos AI module skill event listener.
  *
+ * <p>Extend this class to receive skill change notifications.</p>
+ *
  * @author nacos
+ * @since 3.2.0
  */
 public abstract class AbstractNacosSkillListener implements NacosAiListener<NacosSkillEvent> {
 }

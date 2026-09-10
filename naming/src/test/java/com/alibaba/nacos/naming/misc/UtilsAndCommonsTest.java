@@ -31,7 +31,8 @@ class UtilsAndCommonsTest {
         
         MockEnvironment environment = new MockEnvironment();
         
-        assertEquals(DEFAULT_NACOS_NAMING_CONTEXT, environment.resolvePlaceholders(NACOS_NAMING_CONTEXT));
+        assertEquals(DEFAULT_NACOS_NAMING_CONTEXT,
+            environment.resolvePlaceholders(NACOS_NAMING_CONTEXT));
     }
     
     @Test
@@ -47,4 +48,10 @@ class UtilsAndCommonsTest {
         char[] chars = new char[] {2325, 9, 30, 12, 2};
         assertEquals(0, UtilsAndCommons.shakeUp(new String(chars), 1));
     }
+    
+    @Test
+    void testParseMetadataWithInvalidPair() {
+        assertThrows(Exception.class, () -> UtilsAndCommons.parseMetadata("invalid"));
+    }
+    
 }

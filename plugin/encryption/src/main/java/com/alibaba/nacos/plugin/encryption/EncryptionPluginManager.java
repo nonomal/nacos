@@ -20,7 +20,7 @@ import com.alibaba.nacos.api.plugin.PluginStateChecker;
 import com.alibaba.nacos.api.plugin.PluginStateCheckerHolder;
 import com.alibaba.nacos.api.plugin.PluginType;
 import com.alibaba.nacos.common.spi.NacosServiceLoader;
-import com.alibaba.nacos.common.utils.StringUtils;
+import com.alibaba.nacos.common.spi.PluginRegistryUtils;
 import com.alibaba.nacos.plugin.encryption.spi.EncryptionPluginService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,7 +41,8 @@ public class EncryptionPluginManager {
     
     private static final Logger LOGGER = LoggerFactory.getLogger(EncryptionPluginManager.class);
     
-    private static final Map<String, EncryptionPluginService> ENCRYPTION_SPI_MAP = new ConcurrentHashMap<>();
+    private static final Map<String, EncryptionPluginService> ENCRYPTION_SPI_MAP =
+        new ConcurrentHashMap<>();
     
     private static final EncryptionPluginManager INSTANCE = new EncryptionPluginManager();
     
@@ -54,16 +55,16 @@ public class EncryptionPluginManager {
      */
     private void loadInitial() {
         Collection<EncryptionPluginService> encryptionPluginServices = NacosServiceLoader.load(
-                EncryptionPluginService.class);
+            EncryptionPluginService.class);
         for (EncryptionPluginService encryptionPluginService : encryptionPluginServices) {
-            if (StringUtils.isBlank(encryptionPluginService.algorithmName())) {
-                LOGGER.warn("[EncryptionPluginManager] Load EncryptionPluginService({}) algorithmName(null/empty) fail."
-                        + " Please Add algorithmName to resolve.", encryptionPluginService.getClass());
-                continue;
+            String algorithmName =
+                encryptionPluginService == null ? null : encryptionPluginService.algorithmName();
+            if (PluginRegistryUtils.registerFirst(ENCRYPTION_SPI_MAP,
+                PluginType.ENCRYPTION.getType(), algorithmName, encryptionPluginService, LOGGER)) {
+                LOGGER.info("[EncryptionPluginManager] Load EncryptionPluginService({}) "
+                    + "algorithmName({}) successfully.", encryptionPluginService.getClass(),
+                    algorithmName);
             }
-            ENCRYPTION_SPI_MAP.put(encryptionPluginService.algorithmName(), encryptionPluginService);
-            LOGGER.info("[EncryptionPluginManager] Load EncryptionPluginService({}) algorithmName({}) successfully.",
-                    encryptionPluginService.getClass(), encryptionPluginService.algorithmName());
         }
     }
     
@@ -84,15 +85,17 @@ public class EncryptionPluginManager {
      */
     public Optional<EncryptionPluginService> findEncryptionService(String algorithmName) {
         Optional<PluginStateChecker> checker = PluginStateCheckerHolder.getInstance();
-        if (checker.isPresent() && !checker.get().isPluginEnabled(PluginType.ENCRYPTION.getType(), algorithmName)) {
-            LOGGER.debug("[EncryptionPluginManager] Plugin ENCRYPTION:{} is disabled", algorithmName);
+        if (checker.isPresent()
+            && !checker.get().isPluginEnabled(PluginType.ENCRYPTION.getType(), algorithmName)) {
+            LOGGER.debug("[EncryptionPluginManager] Plugin ENCRYPTION:{} is disabled",
+                algorithmName);
             return Optional.empty();
         }
         return Optional.ofNullable(ENCRYPTION_SPI_MAP.get(algorithmName));
     }
     
     /**
-     * Injection realization.
+     * Register one encryption implementation with first-wins semantics.
      *
      * @param encryptionPluginService Encryption implementation
      */
@@ -100,10 +103,13 @@ public class EncryptionPluginManager {
         if (Objects.isNull(encryptionPluginService)) {
             return;
         }
-        ENCRYPTION_SPI_MAP.put(encryptionPluginService.algorithmName(), encryptionPluginService);
-        LOGGER.info("[EncryptionPluginManager] join successfully.");
+        String algorithmName = encryptionPluginService.algorithmName();
+        if (PluginRegistryUtils.registerFirst(ENCRYPTION_SPI_MAP,
+            PluginType.ENCRYPTION.getType(), algorithmName, encryptionPluginService, LOGGER)) {
+            LOGGER.info("[EncryptionPluginManager] join successfully.");
+        }
     }
-
+    
     /**
      * Get all encryption plugin services.
      *
@@ -112,5 +118,5 @@ public class EncryptionPluginManager {
     public Map<String, EncryptionPluginService> getAllPlugins() {
         return Collections.unmodifiableMap(ENCRYPTION_SPI_MAP);
     }
-
+    
 }

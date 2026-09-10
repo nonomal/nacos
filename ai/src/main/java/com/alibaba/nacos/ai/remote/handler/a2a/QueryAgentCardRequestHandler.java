@@ -16,7 +16,8 @@
 
 package com.alibaba.nacos.ai.remote.handler.a2a;
 
-import com.alibaba.nacos.ai.service.a2a.A2aServerOperationService;
+import com.alibaba.nacos.api.annotation.Since;
+import com.alibaba.nacos.ai.service.a2a.A2aCompatibilityOperationService;
 import com.alibaba.nacos.ai.utils.AgentRequestUtil;
 import com.alibaba.nacos.api.ai.model.a2a.AgentCardDetailInfo;
 import com.alibaba.nacos.api.ai.remote.request.QueryAgentCardRequest;
@@ -40,14 +41,18 @@ import org.springframework.stereotype.Component;
  *
  * @author xiweng.yy
  */
+@Since("3.1.0")
 @Component
-public class QueryAgentCardRequestHandler extends RequestHandler<QueryAgentCardRequest, QueryAgentCardResponse> {
+public class QueryAgentCardRequestHandler
+    extends RequestHandler<QueryAgentCardRequest, QueryAgentCardResponse> {
     
-    private static final Logger LOGGER = LoggerFactory.getLogger(QueryAgentCardRequestHandler.class);
+    private static final Logger LOGGER =
+        LoggerFactory.getLogger(QueryAgentCardRequestHandler.class);
     
-    private final A2aServerOperationService a2aServerOperationService;
+    private final A2aCompatibilityOperationService a2aServerOperationService;
     
-    public QueryAgentCardRequestHandler(A2aServerOperationService a2aServerOperationService) {
+    public QueryAgentCardRequestHandler(
+        A2aCompatibilityOperationService a2aServerOperationService) {
         this.a2aServerOperationService = a2aServerOperationService;
     }
     
@@ -55,11 +60,13 @@ public class QueryAgentCardRequestHandler extends RequestHandler<QueryAgentCardR
     @NamespaceValidation
     @ExtractorManager.Extractor(rpcExtractor = AgentRequestParamExtractor.class)
     @Secured(action = ActionTypes.READ, signType = SignType.AI)
-    public QueryAgentCardResponse handle(QueryAgentCardRequest request, RequestMeta meta) throws NacosException {
+    public QueryAgentCardResponse handle(QueryAgentCardRequest request, RequestMeta meta)
+        throws NacosException {
         AgentRequestUtil.fillNamespaceId(request);
         if (StringUtils.isBlank(request.getAgentName())) {
             QueryAgentCardResponse errorResponse = new QueryAgentCardResponse();
-            errorResponse.setErrorInfo(NacosException.INVALID_PARAM, "parameters `agentName` can't be empty or null");
+            errorResponse.setErrorInfo(NacosException.INVALID_PARAM,
+                "parameters `agentName` can't be empty or null");
             return errorResponse;
         }
         return doHandler(request);
@@ -68,11 +75,13 @@ public class QueryAgentCardRequestHandler extends RequestHandler<QueryAgentCardR
     private QueryAgentCardResponse doHandler(QueryAgentCardRequest request) {
         QueryAgentCardResponse response = new QueryAgentCardResponse();
         try {
-            AgentCardDetailInfo result = a2aServerOperationService.getAgentCard(request.getNamespaceId(),
+            AgentCardDetailInfo result =
+                a2aServerOperationService.getAgentCardForClient(request.getNamespaceId(),
                     request.getAgentName(), request.getVersion(), request.getRegistrationType());
             response.setAgentCardDetailInfo(result);
         } catch (NacosException e) {
-            LOGGER.error("Query agent card for agent {} error: {}", request.getAgentName(), e.getErrMsg());
+            LOGGER.error("Query agent card for agent {} error: {}", request.getAgentName(),
+                e.getErrMsg());
             response.setErrorInfo(e.getErrCode(), e.getErrMsg());
         }
         return response;

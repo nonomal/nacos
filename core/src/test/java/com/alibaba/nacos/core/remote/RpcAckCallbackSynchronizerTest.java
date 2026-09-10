@@ -17,6 +17,7 @@
 package com.alibaba.nacos.core.remote;
 
 import com.alibaba.nacos.api.exception.NacosException;
+import com.alibaba.nacos.core.remote.thirdparty.clhm.ConcurrentLinkedHashMap;
 import com.alibaba.nacos.api.remote.DefaultRequestFuture;
 import com.alibaba.nacos.api.remote.response.Response;
 import com.alibaba.nacos.api.remote.response.HealthCheckResponse;
@@ -33,21 +34,21 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RpcAckCallbackSynchronizerTest {
-
+    
     private static final String CONN_ID = "conn-" + System.currentTimeMillis();
-
+    
     @AfterEach
     void tearDown() {
         RpcAckCallbackSynchronizer.clearContext(CONN_ID);
     }
-
+    
     @Test
     void testAckNotifyWhenConnectionContextNull() {
         Response resp = new HealthCheckResponse();
         resp.setRequestId("req1");
         RpcAckCallbackSynchronizer.ackNotify("nonexistent-conn", resp);
     }
-
+    
     @Test
     void testAckNotifyWhenRequestIdNotInContext() throws NacosException {
         RpcAckCallbackSynchronizer.initContextIfNecessary(CONN_ID);
@@ -55,7 +56,7 @@ class RpcAckCallbackSynchronizerTest {
         resp.setRequestId("req-absent");
         RpcAckCallbackSynchronizer.ackNotify(CONN_ID, resp);
     }
-
+    
     @Test
     void testAckNotifySuccess() throws Exception {
         DefaultRequestFuture future = new DefaultRequestFuture(CONN_ID, "req1");
@@ -67,7 +68,7 @@ class RpcAckCallbackSynchronizerTest {
         assertNotNull(got);
         assertTrue(got.isSuccess());
     }
-
+    
     @Test
     void testAckNotifyFail() throws Exception {
         DefaultRequestFuture future = new DefaultRequestFuture(CONN_ID, "req2");
@@ -79,7 +80,7 @@ class RpcAckCallbackSynchronizerTest {
         Response got = future.get(1000L);
         assertNull(got);
     }
-
+    
     @Test
     void testSyncCallbackRequestIdConflict() throws NacosException {
         RpcAckCallbackSynchronizer.initContextIfNecessary(CONN_ID);
@@ -87,43 +88,84 @@ class RpcAckCallbackSynchronizerTest {
         DefaultRequestFuture f2 = new DefaultRequestFuture(CONN_ID, "reqConflict");
         RpcAckCallbackSynchronizer.syncCallback(CONN_ID, "reqConflict", f1);
         NacosException ex = assertThrows(NacosException.class,
-                () -> RpcAckCallbackSynchronizer.syncCallback(CONN_ID, "reqConflict", f2));
+            () -> RpcAckCallbackSynchronizer.syncCallback(CONN_ID, "reqConflict", f2));
         assertEquals(NacosException.INVALID_PARAM, ex.getErrCode());
         assertTrue(ex.getErrMsg().contains("request id conflict"));
     }
-
+    
     @Test
     void testInitContextIfNecessaryExistingKey() throws NacosException {
-        Map<String, DefaultRequestFuture> first = RpcAckCallbackSynchronizer.initContextIfNecessary(CONN_ID);
-        Map<String, DefaultRequestFuture> second = RpcAckCallbackSynchronizer.initContextIfNecessary(CONN_ID);
+        Map<String, DefaultRequestFuture> first =
+            RpcAckCallbackSynchronizer.initContextIfNecessary(CONN_ID);
+        Map<String, DefaultRequestFuture> second =
+            RpcAckCallbackSynchronizer.initContextIfNecessary(CONN_ID);
         assertTrue(first == second);
     }
-
+    
     @Test
     void testClearContext() throws NacosException {
         RpcAckCallbackSynchronizer.initContextIfNecessary(CONN_ID);
         RpcAckCallbackSynchronizer.clearContext(CONN_ID);
-        Map<String, DefaultRequestFuture> after = RpcAckCallbackSynchronizer.initContextIfNecessary(CONN_ID);
+        Map<String, DefaultRequestFuture> after =
+            RpcAckCallbackSynchronizer.initContextIfNecessary(CONN_ID);
         assertNotNull(after);
     }
-
+    
     @Test
     void testClearFutureWhenConnectionAbsent() {
         RpcAckCallbackSynchronizer.clearFuture("absent-conn", "req1");
     }
-
+    
     @Test
     void testClearFutureWhenRequestIdAbsent() throws NacosException {
         RpcAckCallbackSynchronizer.initContextIfNecessary(CONN_ID);
         RpcAckCallbackSynchronizer.clearFuture(CONN_ID, "absent-req");
     }
-
+    
     @Test
     void testClearFutureRemovesRequestId() throws NacosException {
-        RpcAckCallbackSynchronizer.syncCallback(CONN_ID, "reqToClear", new DefaultRequestFuture(CONN_ID, "reqToClear"));
-        Map<String, DefaultRequestFuture> ctx = RpcAckCallbackSynchronizer.initContextIfNecessary(CONN_ID);
+        RpcAckCallbackSynchronizer.syncCallback(CONN_ID, "reqToClear",
+            new DefaultRequestFuture(CONN_ID, "reqToClear"));
+        Map<String, DefaultRequestFuture> ctx =
+            RpcAckCallbackSynchronizer.initContextIfNecessary(CONN_ID);
         assertTrue(ctx.containsKey("reqToClear"));
         RpcAckCallbackSynchronizer.clearFuture(CONN_ID, "reqToClear");
         assertFalse(ctx.containsKey("reqToClear"));
+    }
+    
+    @Test
+    void testCapacityEvictionCompletesPendingAckFuture() throws Exception {
+        ConcurrentLinkedHashMap<String, Map<String, DefaultRequestFuture>> contexts =
+            (ConcurrentLinkedHashMap<String, Map<String, DefaultRequestFuture>>) RpcAckCallbackSynchronizer.CALLBACK_CONTEXT;
+        int originalCapacity = contexts.capacity();
+        String nextConnectionId = CONN_ID + "-next";
+        try {
+            contexts.setCapacity(1);
+            DefaultRequestFuture evicted = new DefaultRequestFuture(CONN_ID, "evicted");
+            RpcAckCallbackSynchronizer.syncCallback(CONN_ID, "evicted", evicted);
+            DefaultRequestFuture retained = new DefaultRequestFuture(nextConnectionId, "retained");
+            RpcAckCallbackSynchronizer.syncCallback(nextConnectionId, "retained", retained);
+            
+            assertFalse(contexts.containsKey(CONN_ID));
+            assertTrue(evicted.isDone());
+            assertNull(evicted.get(1000L));
+            assertFalse(retained.isDone());
+            HealthCheckResponse response = new HealthCheckResponse();
+            response.setRequestId("retained");
+            RpcAckCallbackSynchronizer.ackNotify(nextConnectionId, response);
+            assertTrue(retained.get(1000L).isSuccess());
+        } finally {
+            contexts.setCapacity(originalCapacity);
+            RpcAckCallbackSynchronizer.clearContext(nextConnectionId);
+        }
+    }
+    
+    @Test
+    void testExplicitContextRemovalDoesNotFailPendingAckFuture() throws NacosException {
+        DefaultRequestFuture future = new DefaultRequestFuture(CONN_ID, "removed");
+        RpcAckCallbackSynchronizer.syncCallback(CONN_ID, "removed", future);
+        RpcAckCallbackSynchronizer.clearContext(CONN_ID);
+        assertFalse(RpcAckCallbackSynchronizer.CALLBACK_CONTEXT.containsKey(CONN_ID));
+        assertFalse(future.isDone());
     }
 }

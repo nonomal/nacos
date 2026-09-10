@@ -17,9 +17,10 @@
 package com.alibaba.nacos.plugin.auth.impl.oidc.config;
 
 import com.alibaba.nacos.core.web.NacosWebBean;
+import com.alibaba.nacos.plugin.auth.impl.oidc.condition.ConditionOnOidcAuth;
 
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Conditional;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -36,9 +37,9 @@ import org.springframework.security.web.SecurityFilterChain;
 @Configuration
 @NacosWebBean
 @EnableWebSecurity
-@ConditionalOnProperty(name = "nacos.core.auth.system.type", havingValue = "oidc")
+@Conditional(ConditionOnOidcAuth.class)
 public class OidcWebSecurityConfig {
-
+    
     /**
      * Configure security filter chain for OIDC mode.
      * All paths are permitted at Spring Security level because Nacos has its own auth filter.
@@ -50,8 +51,8 @@ public class OidcWebSecurityConfig {
     @Bean
     @Order(1)
     public SecurityFilterChain oidcSecurityFilterChain(HttpSecurity http) throws Exception {
-        http.authorizeHttpRequests((authorizeHttpRequests) ->
-                authorizeHttpRequests.requestMatchers("/**").permitAll());
+        http.authorizeHttpRequests(
+            (authorizeHttpRequests) -> authorizeHttpRequests.requestMatchers("/**").permitAll());
         http.csrf(AbstractHttpConfigurer::disable);
         return http.build();
     }

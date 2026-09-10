@@ -19,12 +19,15 @@ package com.alibaba.nacos.client.config.http;
 import com.alibaba.nacos.api.exception.NacosException;
 import com.alibaba.nacos.common.http.HttpRestResult;
 import com.alibaba.nacos.common.http.param.Header;
+import io.micrometer.core.instrument.Metrics;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 
 import java.util.HashMap;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MetricsHttpAgentTest {
@@ -69,16 +72,51 @@ class MetricsHttpAgentTest {
         final MockHttpAgent mockHttpAgent = new MockHttpAgent(name, encode, tenant, namespace);
         final MetricsHttpAgent metricsHttpAgent = new MetricsHttpAgent(mockHttpAgent);
         
-        final HttpRestResult<String> result1 = metricsHttpAgent.httpGet("/aa", new HashMap<String, String>(),
+        final HttpRestResult<String> result1 =
+            metricsHttpAgent.httpGet("/aa", new HashMap<String, String>(),
                 new HashMap<String, String>(), "UTF-8", 1L);
         assertEquals("get /aa", result1.getMessage());
-        final HttpRestResult<String> result2 = metricsHttpAgent.httpPost("/aa", new HashMap<String, String>(),
+        final HttpRestResult<String> result2 =
+            metricsHttpAgent.httpPost("/aa", new HashMap<String, String>(),
                 new HashMap<String, String>(), "UTF-8", 1L);
         assertEquals("post /aa", result2.getMessage());
         
-        final HttpRestResult<String> result3 = metricsHttpAgent.httpDelete("/aa", new HashMap<String, String>(),
+        final HttpRestResult<String> result3 =
+            metricsHttpAgent.httpDelete("/aa", new HashMap<String, String>(),
                 new HashMap<String, String>(), "UTF-8", 1L);
         assertEquals("delete /aa", result3.getMessage());
+    }
+    
+    @Test
+    void testHttpMethodLabelsRecorded() throws Exception {
+        final MockHttpAgent mockHttpAgent = new MockHttpAgent("name", "UTF-8", "aaa", "aaa");
+        final MetricsHttpAgent metricsHttpAgent = new MetricsHttpAgent(mockHttpAgent);
+        final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+        Metrics.globalRegistry.add(meterRegistry);
+        try {
+            metricsHttpAgent.httpGet("/label", new HashMap<String, String>(),
+                new HashMap<String, String>(),
+                "UTF-8", 1L);
+            metricsHttpAgent.httpPost("/label", new HashMap<String, String>(),
+                new HashMap<String, String>(),
+                "UTF-8", 1L);
+            metricsHttpAgent.httpDelete("/label", new HashMap<String, String>(),
+                new HashMap<String, String>(),
+                "UTF-8", 1L);
+            
+            assertMethodLabelRecorded(meterRegistry, "GET", "/label");
+            assertMethodLabelRecorded(meterRegistry, "POST", "/label");
+            assertMethodLabelRecorded(meterRegistry, "DELETE", "/label");
+        } finally {
+            Metrics.globalRegistry.remove(meterRegistry);
+        }
+    }
+    
+    private void assertMethodLabelRecorded(SimpleMeterRegistry meterRegistry, String method,
+        String url) {
+        assertNotNull(
+            meterRegistry.find("nacos_client_request").tags("module", "config", "method", method,
+                "url", url, "code", "200").timer());
     }
     
     private static class MockHttpAgent implements HttpAgent {
@@ -108,21 +146,25 @@ class MetricsHttpAgentTest {
         }
         
         @Override
-        public HttpRestResult<String> httpGet(String path, Map<String, String> headers, Map<String, String> paramValues,
-                String encoding, long readTimeoutMs) throws Exception {
+        public HttpRestResult<String> httpGet(String path, Map<String, String> headers,
+            Map<String, String> paramValues,
+            String encoding, long readTimeoutMs) throws Exception {
             return new HttpRestResult<String>(Header.newInstance(), 200, "get", "get " + path);
         }
         
         @Override
         public HttpRestResult<String> httpPost(String path, Map<String, String> headers,
-                Map<String, String> paramValues, String encoding, long readTimeoutMs) throws Exception {
+            Map<String, String> paramValues, String encoding, long readTimeoutMs)
+            throws Exception {
             return new HttpRestResult<String>(Header.newInstance(), 200, "post", "post " + path);
         }
         
         @Override
         public HttpRestResult<String> httpDelete(String path, Map<String, String> headers,
-                Map<String, String> paramValues, String encoding, long readTimeoutMs) throws Exception {
-            return new HttpRestResult<String>(Header.newInstance(), 200, "delete", "delete " + path);
+            Map<String, String> paramValues, String encoding, long readTimeoutMs)
+            throws Exception {
+            return new HttpRestResult<String>(Header.newInstance(), 200, "delete",
+                "delete " + path);
         }
         
         @Override
